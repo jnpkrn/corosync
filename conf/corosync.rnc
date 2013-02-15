@@ -211,8 +211,9 @@ quorum =
     attribute auto_tie_breaker {"0"|"1"}?,
 
     # CFG: corosync.conf, cluster.conf
-    ## This specifies the number of expected votes, overriding the number
-    ## implied by the number of *node* items within *nodes*.
+    ## This specifies the number of expected
+    ## votes, overriding the number implied by the number of *node* items
+    ## within *nodes*.
     attribute expected_votes {xsd:unsignedInt}?,
 
     # CFG: corosync.conf
@@ -525,12 +526,12 @@ totem =
 
     # XXX: implied check/migration to current items
     # CFG: corosync.conf, cluster.conf
-    ## This specifies that HMAC/SHA1 authentication should be used
-    ## to authenticate all messages.  It further specifies that all data
-    ## should be encrypted with the nss library and aes256 encryption
-    ## algorithm to protect data from eavesdropping.
+    ## This specifies that HMAC/SHA1
+    ## authentication should be used to authenticate all messages.  It further
+    ## specifies that all data should be encrypted with the `nss` library and
+    ## `aes256` encryption algorithm to protect data from eavesdropping.
     ##
-    ## Enabling this option adds a encryption header to every message sent
+    ## Enabling this option adds an encryption header to every message sent
     ## by totem which reduces total throughput.  Also encryption and
     ## authentication consume extra CPU cycles in corosync.
     [ a:defaultValue = "on"
