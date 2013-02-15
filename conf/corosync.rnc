@@ -1,7 +1,8 @@
-# style guide (RELAX NG Compact only):
+# guidelines (relevant to source in RELAX NG Compact form):
 # * '##' comments are wrapped at 50/80 (first line/rest), 2-spaced sentence sep,
 #   AsciiDoc formatting is used within them
 # * sort everything (except for dependencies/nesting) to ease the lookup
+# * for common datatypes, refer to http://www.w3.org/TR/xmlschema11-2
 
 namespace a = "http://relaxng.org/ns/compatibility/annotations/1.0"
 namespace a4doc = "http://people.redhat.com/jpokorny/ns/a4doc"
@@ -25,7 +26,7 @@ common_logging =
     # CFG: corosync.conf, cluster.conf
     ## This specifies whether debug output is
     ## logged for this particular logger.  Also can contain value 'trace',
-    ## which is highest level of debug informations.
+    ## which is highest level of debug messages.
     [ a:defaultValue = "off" ]
     attribute debug {"off"|"on"|"trace"}?,
 
@@ -35,8 +36,9 @@ common_logging =
     attribute logfile {text}?,
 
     # CFG: corosync.conf, cluster.conf
-    ## This specifies the logfile level for this particular subsystem.  Ignored
-    ## if *debug* is 'on'.  Note: 'debug' is the same as if *debug* is 'on'.
+    ## This specifies the logfile level for this
+    ## particular subsystem.  Ignored if *debug* is 'on'.  Note: 'debug' is
+    ## the same as if *debug* is 'on'.
     [ a:defaultValue = "info" ]
     attribute logfile_priority {"alert"
                                |"crit"
