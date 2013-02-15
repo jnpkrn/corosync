@@ -3,7 +3,7 @@
 --------------------------------------------------------
 
 ----------------------------
- Last Updated: May 2012
+ Last Updated: Feb 2013
 ----------------------------
 
 --------------------------------------
@@ -23,7 +23,7 @@
 --------------------------------------
 * logsys glue layer removal
 * harden and finish ykd algorithm
-* implement topic-xmlschema
+* implement topic-xmlschema (Jan P.: topic-relax-conf-gen)
 * Modify totemsrp to allow dynamic definitions of the ring counts
    to allow a larger number of redundant rings then 2.
 * Investigate always-on flight recorder
@@ -61,9 +61,9 @@ targets can be: needle2.1, needle2.X, or future (3.0).
 Once in a shipped version, please remove from the topic list.
 
 ------------------------------------------------------------------------------
-topic-xmlschema
+topic-xmlschema (now subset of topic-relax-conf-gen implementation in progress)
 ------------------------------------------------------------------------------
-XML configuration for corosync exists, but imput file is not checked against
+XML configuration for corosync exists, but input file is not checked against
 XML schema. This topic is about implementing preferably RelaxNG schema of
 corosync configuration.
 
