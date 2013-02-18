@@ -176,7 +176,7 @@ corosync.conf.5.html:
 	$(XSLTPROC) $(DOCBOOK_XSLT_OPTS) $(DOCBOOK_XSL_XHTML) ../conf/$(@:.5.html=.xml) > $@
 
 clean-local:
-	rm -rf $(HTML_DOCS) $(autogen_man)
+	rm -rf $(HTML_DOCS) $(autogen_man) corosync.conf.5
 
 if BUILD_HTML_DOCS
 %.html: %
