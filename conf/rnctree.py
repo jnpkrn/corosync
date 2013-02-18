@@ -131,6 +131,7 @@ class Node(object):
         write = out.append
         if isinstance(self.value, str):
             if self.type == COMMENT:
+            #if self.value:
                 write('  ' * (1 + indent) + self.value)
         else:
             for node in self.value:
@@ -331,6 +332,7 @@ def match_pairs(nodes):
 
     Other effects:
         - merge comments/annotations
+        - remove VSPACEs
     """
     newnodes = []
     i = 0
@@ -359,6 +361,11 @@ def match_pairs(nodes):
         else:
             newnodes.append(node)
             i += 1
+
+        # remove VSPACEs (already added to newnodes to prevent comments merge)
+        if len(newnodes) > 1 and newnodes[-2].type == VSPACE:
+            newnodes = newnodes[:-2] + [newnodes.pop()]
+
         if i >= len(nodes):
             break
         if nodes[i].type in (ANY, SOME, MAYBE):
@@ -547,9 +554,12 @@ def nest_defines(nodes):
             else:
                 node.value = grp.value[:]
             # when _nest_annotations returned *not* due to reaching DEFINE,
-            # but trailing comments are tolerated
-            if i + 1 > len(nodes) or nodes[i + 1].type not in (DEFINE, COMMENT):
+            # but trailing comments are tolerated (already proceeded -> skip)
+            if i >= len(nodes) or nodes[i + 1].type not in (DEFINE, COMMENT):
                 break
+            elif nodes[i + 1].type != COMMENT:
+                for c in mapping['COMMENT']:
+                    newnodes.append(c)
         elif node.type == ELEM:
             # top-level element
             _intersperse(Node(GROUP, [node]))

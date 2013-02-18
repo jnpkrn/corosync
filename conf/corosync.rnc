@@ -19,7 +19,7 @@ corosync =
      & uidgid?)
   }
 
-## LOGGING ####################################################################
+# LOGGING #############################################################
 
 # only named set of attributes
 common_logging =
@@ -37,9 +37,10 @@ common_logging =
 
     # CFG: corosync.conf, cluster.conf
     ## This specifies the logfile level for this
-    ## particular subsystem.  Ignored if *debug* is 'on'.  Note: 'debug' is
-    ## the same as if *debug* is 'on'.
-    [ a:defaultValue = "info" ]
+    ## particular subsystem.  Ignored if *debug* is 'on'.
+    [ a:defaultValue = "info"
+      a4doc:hint = """
+        Value 'debug' is the same as if *debug* is 'on'.""" ]
     attribute logfile_priority {"alert"
                                |"crit"
                                |"debug"
@@ -67,9 +68,10 @@ common_logging =
 
     # CFG: corosync.conf, cluster.conf
     ## This specifies the syslog level for this
-    ## particular subsystem.  Ignored if *debug* is 'on'.  Note: 'debug'
-    ## is the same as *debug* is 'on'.
-    [ a:defaultValue = "info" ]
+    ## particular subsystem.  Ignored if *debug* is 'on'.
+    [ a:defaultValue = "info"
+      a4doc:hint = """
+        Value 'debug' is the same as if *debug* is 'on'.""" ]
     attribute syslog_priority {"alert"
                               |"crit"
                               |"debug"
@@ -152,7 +154,7 @@ logger_subsys =
     common_logging
   }
 
-## NODELIST ###################################################################
+# NODELIST ############################################################
 
 nodelist =
   ## In this configuration section, one can
@@ -194,7 +196,7 @@ node =
     # NOTE: Augeas lens for corosync.conf counts on X = 0..9 only
   }
 
-## QUORUM #####################################################################
+# QUORUM ##############################################################
 
 quorum =
   ## In this configuration section, one can
@@ -202,13 +204,13 @@ quorum =
   element quorum {
     # CFG: corosync.conf
     ## This enables Downscale feature
-    ## (see `votequorum(5)`).
+    ## (see **votequorum**(5)).
     [ a:defaultValue = "0" ]
     attribute allow_downscale {"0"|"1"}?,
 
     # CFG: corosync.conf
     ## This enables Auto Tie Breaker feature
-    ## (see `votequorum(5)`).
+    ## (see **votequorum**(5)).
     [ a:defaultValue = "0" ]
     attribute auto_tie_breaker {"0"|"1"}?,
 
@@ -220,13 +222,13 @@ quorum =
 
     # CFG: corosync.conf
     ## This enables Last Man Standing feature
-    ## (see `votequorum(5)`).
+    ## (see **votequorum**(5)).
     [ a:defaultValue = "0" ]
     attribute last_man_standing {"0"|"1"}?,
 
     # CFG: corosync.conf
     ## This specifies the tunable for Last Man
-    ## Standing feature (see `votequorum(5)`).
+    ## Standing feature (see **votequorum**(5)).
     [ a:defaultValue = "0" ]
     attribute last_man_standing_window {xsd:nonNegativeInteger}?,
 
@@ -237,7 +239,7 @@ quorum =
 
     # CFG: corosync.conf, cluster.conf
     ## This enables two node cluster operations
-    ## (see `votequorum(5)`).
+    ## (see **votequorum**(5)).
     [ a:defaultValue = "0" ]
     attribute two_node {"0"|"1"}?,
 
@@ -246,12 +248,12 @@ quorum =
 
     # CFG: corosync.conf
     ## This enables Wait For All feature
-    ## (see `votequorum(5)`).
+    ## (see **votequorum**(5)).
     [ a:defaultValue = "0" ]
     attribute wait_for_all {"0"|"1"}?
   }
 
-## RESOURCES ##################################################################
+# RESOURCES ###########################################################
 
 # only named set of attributes
 common_resource =
@@ -285,7 +287,7 @@ resources =
     system?
   }
 
-## TOTEM ######################################################################
+# TOTEM ###############################################################
 
 totem =
   ## In this configuration section, one can
@@ -300,10 +302,9 @@ totem =
     ## Set this option to 'yes' to force the high bit to be zero and therefor
     ## ensure the nodeid is a positive signed 32bit integer.
     [ a:defaultValue = "no"
-      a4doc:discretion-hint =
-        "The clusters behavior is undefined if this option is enabled"
-        ~ " on only a subset of the cluster (for example during a rolling"
-        ~ " upgrade)." ]
+      a4doc:discretion-hint = """
+        The clusters behavior is undefined if this option is enabled on only
+        a subset of the cluster (for example during a rolling upgrade).""" ]
     attribute clear_node_high_bit {"no"|"yes"}?,
 
     # CFG: corosync.conf, cluster.conf
@@ -385,9 +386,9 @@ totem =
     ## how long the token should be held by the representative when
     ## the protocol is under low utilization.
     [ a:defaultValue = "180"
-      a4doc:danger-hint =
-        "It is not recommended to override this value without guidance"
-        ~ " from the corosync community." ]
+      a4doc:danger-hint = """
+        It is not recommended to override this value without guidance from
+        the corosync community.""" ]
     attribute hold {xsd:unsignedInt}?,
 
     # CFG: corosync.conf, cluster.conf
@@ -432,27 +433,28 @@ totem =
 
     # CFG: corosync.conf, cluster.conf
     ## This specifies the network maximum transmit
-    ## unit.  To set this value beyond 1500, the regular frame MTU, requires
+    ## unit.  Setting this value beyond '1500', the regular frame MTU, requires
     ## ethernet devices that support large, or also called jumbo, frames.
     ## If any device in the network doesn't support large frames, the protocol
-    ## will not operate properly.  The hosts must also have their mtu size set
+    ## will not operate properly.  The hosts must also have their MTU size set
     ## from 1500 to whatever frame size is specified here.
-    ##
-    ## Please note that while some NICs or
-    ## switches claim large frame support, they support '9000' MTU as
-    ## the maximum frame size including the IP header.  Setting the *netmtu*
-    ## and host MTUs to '9000' will cause totem to use the full 9000 bytes
-    ## of the frame.  Then Linux will add an 18byte header moving the full
-    ## frame size to 9018.  As a result some hardware will not operate properly
-    ## with this size of data.  A *netmtu* of '8982' seems to work for the few
-    ## large frame devices that have been tested.  Some manufacturers claim
-    ## large frame support when in fact they support frame sizes of 4500 bytes.
-    ##
-    ## When sending multicast traffic, if the network frequently reconfigures,
-    ## chances are that some device in the network doesn't support large frames.
-    ##
-    ## Choose hardware carefully if intending to use large frame support.
-    [ a:defaultValue = "1500" ]
+    [ a:defaultValue = "1500"
+      a4doc:discretion-hint = """
+        While some NICs or switches claim large frame support, they support
+        9000 MTU as the maximum frame size including the IP header.  Setting
+        the *netmtu* and host MTUs to '9000' will cause totem to use the full
+        9000 bytes of the frame.  Then Linux will add an 18byte header moving
+        the full frame size to 9018.  As a result some hardware will not
+        operate properly with this size of data.  A *netmtu* of '8982' seems
+        to work for the few large frame devices that have been tested.
+        Some manufacturers claim large frame support when in fact they
+        support frame sizes of 4500 bytes.
+
+        When sending multicast traffic, if the network frequently
+        reconfigures, chances are that some device in the network doesn't
+        support large frames.
+
+        Choose hardware carefully if intending to use large frame support.""" ]
     attribute netmtu {xsd:unsignedInt}?,
 
     # XXX: undocumented
@@ -521,9 +523,9 @@ totem =
     ## This value will automatically be calculated from the *token* timeout
     ## and *problem_count_threshold* but may be overridden.
     [ a:defaultValue = "47"
-      a4doc:danger-hint =
-        "It is not recommended to override this value without guidance"
-        ~ " from the corosync community." ]
+      a4doc:danger-hint = """
+        It is not recommended to override this value without guidance from
+        the corosync community.""" ]
     attribute rrp_token_expired_timeout {xsd:unsignedInt}?,
 
     # XXX: implied check/migration to current items
@@ -537,9 +539,9 @@ totem =
     ## by totem which reduces total throughput.  Also encryption and
     ## authentication consume extra CPU cycles in corosync.
     [ a:defaultValue = "on"
-      a4doc:deprecation-hint =
-      "It's recomended to use combination of *crypto_cipher* and *crypto_hash*."
-    ]
+      a4doc:deprecation-hint = """
+        It's recomended to use combination of *crypto_cipher* and *crypto_hash*
+        instead.""" ]
     attribute secauth {"off"|"on"}?,
 
     # CFG: corosync.conf
@@ -552,9 +554,9 @@ totem =
     ## __80__msec.  Other timer values must also change if this value
     ## is changed.
     [ a:defaultValue = "0"
-      a4doc:danger-hint =
-        "Seek advice from the corosync mailing list if trying to run"
-        ~ " larger configurations." ]
+      a4doc:danger-hint = """
+        Seek advice from the corosync mailing list if trying to run larger
+        configurations.""" ]
     attribute send_join {xsd:unsignedInt}?,
 
     # CFG: corosync.conf, cluster.conf
@@ -582,9 +584,9 @@ totem =
     ## retransmitted.  This will be automatically calculated if *token* is
     ## modified.
     [ a:defaultValue = "238"
-      a4doc:danger-hint =
-        "It is not recommended to override this value without guidance"
-        ~ " from the corosync community." ]
+      a4doc:danger-hint = """
+        It is not recommended to override this value without guidance from
+        the corosync community.""" ]
     attribute token_retransmit {xsd:unsignedInt}?,
 
     # CFG: corosync.conf, cluster.conf
@@ -705,17 +707,19 @@ interface =
     ## The *ringnumber* must start at '0'.
     attribute ringnumber {xsd:unsignedByte}?,
 
+    # XXX: implied check
     # CFG: corosync.conf, cluster.conf
     ## This specifies the Time To Live (TTL).
     ## If you run your cluster on a routed network, the default of '1' will
     ## be too small.  This option provides a way to increase this up to '255'.
-    ## The valid range is '0..255'.  Note that this is only valid on multicast
-    ## transport types.
-    [ a:defaultValue = "1" ]
+    ## The valid range is '0..255'.
+    [ a:defaultValue = "1"
+      a4doc:dicretion-hint = """
+        This is only valid on multicast transport types.""" ]
     attribute ttl {xsd:unsignedByte}?
   }
 
-## UIDGID #####################################################################
+# UIDGID ##############################################################
 
 uidgid =
   element uidgid {
@@ -729,4 +733,4 @@ uidgid =
   }
 
 
-# vim: et:ts=2:sw=2
+# vim: set et ts=2 sw=2:

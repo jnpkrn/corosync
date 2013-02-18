@@ -36,8 +36,8 @@
  -->
 
 <!--
+  TODO: try to preserve newlines in a4doc annotations
   TODO: cross-references
-  TODO: support annotations of the sections
   TODO: dependency on simplification can be removed using similar construction
         as used in rng2lens.xsl, IOW. named set of options would be described
         and further referred (wrapped with some wording like "see the named
@@ -395,10 +395,13 @@ SEE ALSO
             </xsl:call-template>
         <xsl:text>.</xsl:text>
     </xsl:if>
-    <xsl:for-each select="@a4doc:*[contains(local-name(), '-hint')]">
+    <xsl:for-each select="@a4doc:*[contains(local-name(), 'hint')]">
         <!--@Extra handling of per-option a4doc annotations.-->
         <xsl:value-of select="$NLNL"/>
         <xsl:choose>
+            <xsl:when test="local-name() = 'hint'">
+                <xsl:text>TIP: </xsl:text>
+            </xsl:when>
             <xsl:when test="local-name() = 'danger-hint'">
                 <xsl:text>CAUTION: </xsl:text>
             </xsl:when>

@@ -69,7 +69,7 @@ immediate_tokens = tuple('''
   NAME
   PATTERN
   SEQ
-  WHITESPACE
+  VSPACE
   '''.split()) + quant_tokens
 
 # http://relaxng.org/compact-20021121.html#syntax
@@ -136,9 +136,6 @@ NCName = NCName_start + "(?:" + NCName_nonstart + ")*"
 
 # lex internals
 
-t_ignore = " \t\n"
-
-
 def t_error(t):
     try:
         t.lexer.skip(1)
@@ -155,23 +152,23 @@ t_INTERLEAVE = r'&'
 t_MAYBE      = r'\?'
 t_SEQ        = r','
 t_SOME       = r'\+'
-t_WHITESPACE = r'\s+'
+t_VSPACE     = r'\n\s*\n'
 
 
 def t_ANNOTATION(t):
-    r"\#\#[ \t]?.*"
+    r"\#\#[ \t]?[^\n]*"
     t.value = t.value.replace('# ', '#', 1).split('##', 1)[1].rstrip()
     return t
 
 
 def t_COMMENT(t):
-    r"\#[ \t]?.*"
+    r"\#[ \t]?[^\n]*"
     t.value = t.value.replace('# ', '#', 1).split('#', 1)[1].rstrip()
     return t
 
 
 def t_DATATYPES(t):
-    r"datatypes\s+xsd\s*=\s*.*"
+    r"datatypes\s+xsd\s*=\s*[^\n]*"
     t.value = t.value.split('=', 1)[1].strip()
     return t
 
@@ -183,7 +180,7 @@ def t_DATATAG(t):
 
 
 def t_DEFAULT_NS(t):
-    r"default\s+namespace\s*=\s*.*"
+    r"default\s+namespace\s*=\s*[^\n]*"
     t.value = t.value.split('=', 1)[1].strip()
     return t
 
@@ -194,9 +191,16 @@ def t_INCLUDE(t):
 t_INCLUDE.__doc__ = r'include\s*"' + NCName + '"'
 
 
+# literal ::= literalSegment ("~" literalSegment)*
+# XXX: only the first literalSegment is guarded for matching quotes
+# NB: this is what required multi-line and dot-matches-all as
+#     triple-quoted literals can contain newlines
 def t_LITERAL(t):
-    r'".+?"(?:\s*[~]\s*".+?")*'
-    t.value = ' '.join(i.strip(' \n"') for i in t.value.split('~'))
+    r'''(?msx)(?P<start>(?P<start1>["'])(?:(?P=start1){2})?).*?(?P=start)
+        (?:\s*[~]\s*(?:['"]{1,3}).*?(?:['"]{1,3}))*'''
+    #r'".+?"(?:\s*[~]\s*".+?")*'
+    #r'''(["'])(\1{2})?.*?\1\2(?:\s*[~]\s*\1\2.?*\1\2)*'''
+    t.value = ' '.join(i.rstrip("\n").strip(' "') for i in t.value.split('~'))
     return t
 
 
@@ -208,13 +212,13 @@ t_NAME.__doc__ = r"\\[.]" + NCName
 
 
 def t_NS(t):
-    r"namespace\s+.*"
+    r"namespace\s+[^\n]*"
     t.value = t.value.split(None, 1)[1]
     return t
 
 
 def t_PATTERN(t):
-    r'{\s*pattern\s*=\s*".*"\s*}'
+    r'{\s*pattern\s*=\s*"[^\n]*"\s*}'
     t.value = t.value[:-1].split('=', 1)[1].strip()[1:-1]
     return t
 
