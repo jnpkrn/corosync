@@ -200,7 +200,7 @@ node =
 
 quorum =
   ## In this configuration section, one can
-  ## adjust quorum.
+  ## adjust quorum.  Refer to **votequorum**(5) for details.
   element quorum {
     # CFG: corosync.conf
     ## This enables Downscale feature
