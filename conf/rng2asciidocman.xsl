@@ -36,7 +36,6 @@
  -->
 
 <!--
-  TODO: try to preserve newlines in a4doc annotations
   TODO: cross-references
   TODO: dependency on simplification can be removed using similar construction
         as used in rng2lens.xsl, IOW. named set of options would be described
@@ -70,8 +69,8 @@
             </author>
             <created>2013-02-01</created>
             <release rdf:parseType="Resource">
-                <revision>0.2</revision>
-                <created>2013-02-04</created>
+                <revision>0.4</revision>
+                <created>2013-02-19</created>
             </release>
             <rights>Copyright 2013 Red Hat, Inc.</rights>
             <license rdf:resource="http://opensource.org/licenses/BSD-3-Clause"/>
@@ -94,13 +93,22 @@
 <xsl:variable name="NLNLNL"><xsl:text>&#xA;&#xA;&#xA;</xsl:text></xsl:variable>
 
 <xsl:template name="string-replace-all">
-    <!--** Replaces each occurrence of 'replace' in 'string' with 'by'. -->
+    <!--** Replaces each occurrence of 'replace' in 'string' with 'by'.
+           And/or can be used to normalize space in between occurences. -->
     <xsl:param name="string"/>
     <xsl:param name="replace"/>
     <xsl:param name="by"/>
+    <xsl:param name="normalize-between" select="false()"/>
     <xsl:choose>
         <xsl:when test="contains($string, $replace)">
-            <xsl:value-of select="substring-before($string, $replace)"/>
+            <xsl:choose>
+                <xsl:when test="$normalize-between">
+                    <xsl:value-of select="normalize-space(substring-before($string, $replace))"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="substring-before($string, $replace)"/>
+                </xsl:otherwise>
+            </xsl:choose>
             <xsl:value-of select="$by"/>
             <!--@Recursion.-->
             <xsl:call-template name="string-replace-all">
@@ -108,10 +116,18 @@
                                 select="substring-after($string, $replace)"/>
                 <xsl:with-param name="replace" select="$replace"/>
                 <xsl:with-param name="by" select="$by"/>
+                <xsl:with-param name="normalize-between" select="$normalize-between"/>
             </xsl:call-template>
         </xsl:when>
         <xsl:otherwise>
-            <xsl:value-of select="$string"/>
+            <xsl:choose>
+                <xsl:when test="$normalize-between">
+                    <xsl:value-of select="normalize-space($string)"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="$string"/>
+                </xsl:otherwise>
+            </xsl:choose>
         </xsl:otherwise>
     </xsl:choose>
 </xsl:template>
@@ -379,44 +395,78 @@ SEE ALSO
     </xsl:variable>
     <xsl:value-of select="$NL"/>
     <xsl:value-of select="concat($bold, @name, $bold)"/>
-    <xsl:if test="@a:defaultValue">
-        <xsl:value-of select="concat(' (default: ', $underline, @a:defaultValue, $underline,')')"/>
+    <xsl:if test="@a:defaultValue | rng:choice">
+        <xsl:value-of select="' ('"/>
+            <xsl:choose>
+                <xsl:when test="rng:choice">
+                    <!--@Show enumerated values.-->
+                    <xsl:variable name="linearized">
+                        <xsl:call-template name="text-join">
+                            <xsl:with-param name="items"
+                                            select="rng:choice/rng:value"/>
+                            <xsl:with-param name="sep" select="', '"/>
+                            <xsl:with-param name="markup" select="$underline"/>
+                        </xsl:call-template>
+                    </xsl:variable>
+                    <xsl:choose>
+                        <xsl:when test="@a:defaultValue">
+                            <xsl:variable name="seek"
+                                          select="concat($underline,
+                                                         @a:defaultValue,
+                                                         $underline)"/>
+                            <xsl:call-template name="string-replace-all">
+                                <xsl:with-param name="string"
+                                                select="$linearized"/>
+                                <xsl:with-param name="replace" select="$seek"/>
+                                <xsl:with-param name="by"
+                                                select="concat($seek,
+                                                               ' [default]')"/>
+                            </xsl:call-template>
+                        </xsl:when>
+                        <xsl:otherwise>
+                            <xsl:value-of select="$linearized"/>
+                        </xsl:otherwise>
+                    </xsl:choose>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="concat('default: ', $underline,
+                                                 @a:defaultValue, $underline)"/>
+                </xsl:otherwise>
+            </xsl:choose>
+        <xsl:value-of select="')'"/>
     </xsl:if>
     <xsl:text>::</xsl:text>
     <xsl:value-of select="concat($NLNL, $content)"/>
-    <xsl:if test="rng:choice">
-        <!--@Show enumerated values.-->
-        <xsl:value-of select="$NL"/>
-        <xsl:text>Possible values: </xsl:text>
-            <xsl:call-template name="text-join">
-                <xsl:with-param name="items" select="rng:choice/rng:value"/>
-                <xsl:with-param name="sep" select="', '"/>
-                <xsl:with-param name="markup" select="$underline"/>
-            </xsl:call-template>
-        <xsl:text>.</xsl:text>
-    </xsl:if>
     <xsl:for-each select="@a4doc:*[contains(local-name(), 'hint')]">
         <!--@Extra handling of per-option a4doc annotations.-->
         <xsl:value-of select="$NLNL"/>
         <xsl:choose>
             <xsl:when test="local-name() = 'hint'">
-                <xsl:text>TIP: </xsl:text>
+                <xsl:value-of select="'[TIP]'"/>
             </xsl:when>
             <xsl:when test="local-name() = 'danger-hint'">
-                <xsl:text>CAUTION: </xsl:text>
+                <xsl:value-of select="'[CAUTION]'"/>
             </xsl:when>
             <xsl:when test="local-name() = 'discretion-hint'">
-                <xsl:text>IMPORTANT: </xsl:text>
+                <xsl:value-of select="'[IMPORTANT]'"/>
             </xsl:when>
             <xsl:when test="local-name() = 'deprecation-hint'">
-                <xsl:text>WARNING: This has been deprecated. </xsl:text>
+                <xsl:value-of select="concat('[WARNING]', $NL,
+                                      '.Deprecation warning')"/>
             </xsl:when>
             <xsl:otherwise>
-                <xsl:text>WARNING: </xsl:text>
+                <xsl:value-of select="'[WARNING]'"/>
             </xsl:otherwise>
         </xsl:choose>
-        <xsl:value-of select="normalize-space(.)"/>
-        <xsl:value-of select="$NL"/>
+        <xsl:value-of select="concat($NL, '==========================')"/>
+        <!--@Only normalize in between new-lines.-->
+        <xsl:call-template name="string-replace-all">
+            <xsl:with-param name="string" select="."/>
+            <xsl:with-param name="replace" select="$NL"/>
+            <xsl:with-param name="by" select="$NL"/>
+            <xsl:with-param name="normalize-between" select="true()"/>
+        </xsl:call-template>
+        <xsl:value-of select="concat($NL, '==========================', $NL)"/>
     </xsl:for-each>
     <xsl:value-of select="$NLNL"/>
 </xsl:template>

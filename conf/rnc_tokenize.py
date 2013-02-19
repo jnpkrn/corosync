@@ -198,9 +198,10 @@ t_INCLUDE.__doc__ = r'include\s*"' + NCName + '"'
 def t_LITERAL(t):
     r'''(?msx)(?P<start>(?P<start1>["'])(?:(?P=start1){2})?).*?(?P=start)
         (?:\s*[~]\s*(?:['"]{1,3}).*?(?:['"]{1,3}))*'''
-    #r'".+?"(?:\s*[~]\s*".+?")*'
-    #r'''(["'])(\1{2})?.*?\1\2(?:\s*[~]\s*\1\2.?*\1\2)*'''
     t.value = ' '.join(i.rstrip("\n").strip(' "') for i in t.value.split('~'))
+    # this is a little hack to enforce new-lines in XML attributes,
+    # not present at trang
+    t.value = t.value.replace("\n", "&#xA;\n")
     return t
 
 
