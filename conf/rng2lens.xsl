@@ -63,8 +63,8 @@
             </author>
             <created>2013-02-01</created>
             <release rdf:parseType="Resource">
-                <revision>0.2</revision>
-                <created>2013-02-04</created>
+                <revision>0.3</revision>
+                <created>2013-02-19</created>
             </release>
             <rights>Copyright 2013 Red Hat, Inc.</rights>
             <license rdf:resource="http://opensource.org/licenses/BSD-3-Clause"/>

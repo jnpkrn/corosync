@@ -69,7 +69,7 @@
             </author>
             <created>2013-02-01</created>
             <release rdf:parseType="Resource">
-                <revision>0.4</revision>
+                <revision>0.5</revision>
                 <created>2013-02-19</created>
             </release>
             <rights>Copyright 2013 Red Hat, Inc.</rights>
