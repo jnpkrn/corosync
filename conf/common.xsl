@@ -56,6 +56,55 @@
     </rdf:RDF>
 </xsl:template>
 
+<xsl:variable name="SP"><xsl:text> </xsl:text></xsl:variable>
+<xsl:variable name="NL"><xsl:text>&#xA;</xsl:text></xsl:variable>
+<xsl:variable name="NLNL"><xsl:text>&#xA;&#xA;</xsl:text></xsl:variable>
+<xsl:variable name="NLNLNL"><xsl:text>&#xA;&#xA;&#xA;</xsl:text></xsl:variable>
+<xsl:variable name="QUOT"><xsl:text>"</xsl:text></xsl:variable>
+
+<xsl:template name="string-replace-all">
+    <!--** Replaces each occurrence of 'replace' in 'string' with 'by'.
+           And/or can be used to normalize space in between occurences. -->
+    <xsl:param name="string"/>
+    <xsl:param name="replace"/>
+    <xsl:param name="by"/>
+    <xsl:param name="normalize-between" select="false()"/>
+    <xsl:choose>
+        <xsl:when test="contains($string, $replace)">
+            <xsl:choose>
+                <xsl:when test="$normalize-between">
+                    <xsl:value-of select="normalize-space(
+                                              substring-before($string,
+                                                               $replace))"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="substring-before($string, $replace)"/>
+                </xsl:otherwise>
+            </xsl:choose>
+            <xsl:value-of select="$by"/>
+            <!--@Recursion.-->
+            <xsl:call-template name="string-replace-all">
+                <xsl:with-param name="string"
+                                select="substring-after($string, $replace)"/>
+                <xsl:with-param name="replace" select="$replace"/>
+                <xsl:with-param name="by" select="$by"/>
+                <xsl:with-param name="normalize-between"
+                                select="$normalize-between"/>
+            </xsl:call-template>
+        </xsl:when>
+        <xsl:otherwise>
+            <xsl:choose>
+                <xsl:when test="$normalize-between">
+                    <xsl:value-of select="normalize-space($string)"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="$string"/>
+                </xsl:otherwise>
+            </xsl:choose>
+        </xsl:otherwise>
+    </xsl:choose>
+</xsl:template>
+
 <xsl:template name="text-join">
     <!--** Simple text join of 'items' using 'sep' (defaults to space). -->
     <!-- TODO: normalize-space? -->
