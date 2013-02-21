@@ -69,8 +69,8 @@
             </author>
             <created>2013-02-01</created>
             <release rdf:parseType="Resource">
-                <revision>0.5</revision>
-                <created>2013-02-19</created>
+                <revision>0.6</revision>
+                <created>2013-02-21</created>
             </release>
             <rights>Copyright 2013 Red Hat, Inc.</rights>
             <license rdf:resource="http://opensource.org/licenses/BSD-3-Clause"/>
@@ -189,10 +189,16 @@ Empty lines and lines starting with '#' character are ignored.
 
 CONFIGURATION SECTIONS AND OPTIONS
 ----------------------------------
+
+In this section, configurations items are marked as *name* and 'value'.
+When the values for particular configuration item are limited to an enumerated
+set, they are appended to the item's name with special highlight of the default
+value (if defined): *what* ('chalk', 'cheese', ['dada']).
+Sole default is stated in a similar fashion.
+
 </xsl:variable>
 
 <xsl:variable name="tail">
-
 FILES
 -----
 [glossary]
@@ -376,8 +382,8 @@ SEE ALSO
                                                 select="$linearized"/>
                                 <xsl:with-param name="replace" select="$seek"/>
                                 <xsl:with-param name="by"
-                                                select="concat($seek,
-                                                               ' [default]')"/>
+                                                select="concat('[', $seek,
+                                                               ']')"/>
                             </xsl:call-template>
                         </xsl:when>
                         <xsl:otherwise>
@@ -423,7 +429,7 @@ SEE ALSO
             <xsl:with-param name="by" select="$NL"/>
             <xsl:with-param name="normalize-between" select="true()"/>
         </xsl:call-template>
-        <xsl:value-of select="concat($NL, '==========================', $NL)"/>
+        <xsl:value-of select="concat($NL, '==========================')"/>
     </xsl:for-each>
     <xsl:value-of select="$NLNL"/>
 </xsl:template>
