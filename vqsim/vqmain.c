@@ -23,7 +23,6 @@ extern int corosync_log_config_read (const char **error_string);
 /* One of these per partition */
 struct vq_partition {
 	TAILQ_HEAD(, vq_node) nodelist;
-	TAILQ_ENTRY(vq_partition) entries;
 	struct memb_ring_id ring_id;
 	int num;
 };
@@ -38,7 +37,8 @@ struct vq_node {
 };
 
 static struct vq_partition partitions[MAX_PARTITIONS];
-qb_loop_t *poll_loop;
+static qb_loop_t *poll_loop;
+static int autofence;
 
 static void print_qmsg(struct vqsim_quorum_msg *qmsg)
 {
@@ -297,12 +297,17 @@ void cmd_stop_node(int nodeid, int partition)
 	/* Remove processor */
 	vq_quit(node->instance);
 
-	/* Rxemove from partition list */
+	/* Remove from partition list */
 	TAILQ_REMOVE(&part->nodelist, node, entries);
 	free(node);
 
-	/* rebuild quorum */
+	/* Rebuild quorum */
 	send_partition_to_nodes(part);
+}
+
+void cmd_set_autofence(int onoff)
+{
+	autofence = onoff;
 }
 
 /* ---------------------------------- */
@@ -317,12 +322,13 @@ static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 		if (buffer[len-1] == '\n') {
 			buffer[len-1] = '\0';
 		}
-		buffer[len] = '\0';
-
+		else {
+			buffer[len] = '\0';
+		}
 		parse_input_command(buffer, len);
 	}
 	else {
-		return -1;
+		exit(0);
 	}
 
 	return 0;
