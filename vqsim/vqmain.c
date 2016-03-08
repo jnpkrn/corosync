@@ -22,21 +22,23 @@ extern int corosync_log_config_read (const char **error_string);
 
 /* One of these per partition */
 struct vq_partition {
-	TAILQ_HEAD(, vq_instance) nodelist;
+	TAILQ_HEAD(, vq_node) nodelist;
 	TAILQ_ENTRY(vq_partition) entries;
 	struct memb_ring_id ring_id;
+	int num;
 };
 
 /* One of these per node */
-struct vq_instance {
+struct vq_node {
 	vq_object_t instance;
 	unsigned int nodeid;
 	int fd;
 	struct vq_partition *partition;
-	TAILQ_ENTRY(vq_instance) entries;
+	TAILQ_ENTRY(vq_node) entries;
 };
 
-static struct vq_partition partition[MAX_PARTITIONS];
+static struct vq_partition partitions[MAX_PARTITIONS];
+qb_loop_t *poll_loop;
 
 static void print_qmsg(struct vqsim_quorum_msg *qmsg)
 {
@@ -53,14 +55,14 @@ static void print_qmsg(struct vqsim_quorum_msg *qmsg)
 	fprintf(stderr, "]\n");
 }
 
-static void propogate_vq_message(struct vq_instance *vqi, const char *msg, int len)
+static void propogate_vq_message(struct vq_node *vqn, const char *msg, int len)
 {
-	struct vq_instance *other_vqi;
+	struct vq_node *other_vqn;
 
 	/* Send it to everyone in that node's partition (including itself) */
 	// TODO: ordering?
-	TAILQ_FOREACH(other_vqi, &vqi->partition->nodelist, entries) {
-		write(other_vqi->fd, msg, len);
+	TAILQ_FOREACH(other_vqn, &vqn->partition->nodelist, entries) {
+		write(other_vqn->fd, msg, len);
 	}
 }
 
@@ -70,11 +72,11 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 	int msglen;
 	struct vqsim_msg_header *msg;
 	struct vqsim_quorum_msg *qmsg;
-	struct vq_instance *vqi = data;
+	struct vq_node *vqn = data;
 
 	if (revents == POLLIN) {
 		msglen = read(fd, msgbuf, sizeof(msgbuf));
-//		fprintf(stderr, "c: message received from child %d (len=%d)\n", vqi->nodeid, msglen);
+//		fprintf(stderr, "c: message received from child %d (len=%d)\n", vqn->nodeid, msglen);
 		if (msglen < 0) {
 			perror("read failed");
 		}
@@ -88,7 +90,7 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 				break;
 			case VQMSG_EXEC:
 				/* Message from votequorum, pass around the partition */
-				propogate_vq_message(vqi, msgbuf, msglen);
+				propogate_vq_message(vqn, msgbuf, msglen);
 				break;
 			case VQMSG_QUIT:
 			case VQMSG_SYNC:
@@ -98,7 +100,7 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 		}
 	}
 	if (revents == POLLERR) {
-		fprintf(stderr, "pollerr on %d\n", vqi->nodeid);
+		fprintf(stderr, "pollerr on %d\n", vqn->nodeid);
 	}
 	return 0;
 }
@@ -143,7 +145,6 @@ static int32_t sigchld_handler(int32_t signal, void *data)
 	pid_t pid;
 	int status;
 
-	fprintf(stderr, "sigcnhld handler called\n");
 	pid = wait(&status);
 	if (WIFEXITED(status)) {
 		fprintf(stderr, "child %d exited with status %d\n", pid, WEXITSTATUS(status));
@@ -156,7 +157,7 @@ static int32_t sigchld_handler(int32_t signal, void *data)
 
 static void send_partition_to_nodes(struct vq_partition *partition)
 {
-	struct vq_instance *vqi;
+	struct vq_node *vqn;
 	int nodelist[MAX_NODES];
 	int nodes = 0;
 	int first = 1;
@@ -165,16 +166,16 @@ static void send_partition_to_nodes(struct vq_partition *partition)
 	partition->ring_id.seq += 4;
 
 	/* Build the node list */
-	TAILQ_FOREACH(vqi, &partition->nodelist, entries) {
-		nodelist[nodes++] = vqi->nodeid;
+	TAILQ_FOREACH(vqn, &partition->nodelist, entries) {
+		nodelist[nodes++] = vqn->nodeid;
 		if (first) {
-			partition->ring_id.rep.nodeid = vqi->nodeid;
+			partition->ring_id.rep.nodeid = vqn->nodeid;
 			first = 0;
 		}
 	}
 
-	TAILQ_FOREACH(vqi, &partition->nodelist, entries) {
-		vq_set_nodelist(vqi->instance, &partition->ring_id, nodelist, nodes);
+	TAILQ_FOREACH(vqn, &partition->nodelist, entries) {
+		vq_set_nodelist(vqn->instance, &partition->ring_id, nodelist, nodes);
 	}
 }
 
@@ -183,10 +184,39 @@ static void init_partitions()
 	int i;
 
 	for (i=0; i<MAX_PARTITIONS; i++) {
-		TAILQ_INIT(&partition[i].nodelist);
-		partition[i].ring_id.rep.nodeid = 1000+i;
-		partition[i].ring_id.seq = 0;
+		TAILQ_INIT(&partitions[i].nodelist);
+		partitions[i].ring_id.rep.nodeid = 1000+i;
+		partitions[i].ring_id.seq = 0;
+		partitions[i].num = i;
 	}
+}
+
+static int create_node(int nodeid, int partno)
+{
+	struct vq_node *newvq;
+
+	newvq = malloc(sizeof(struct vq_node));
+	if (newvq) {
+		newvq->instance = vq_create_instance(poll_loop, nodeid);
+		newvq->partition = &partitions[partno];
+		newvq->nodeid = nodeid;
+		newvq->fd = vq_get_parent_fd(newvq->instance);
+		TAILQ_INSERT_TAIL(&partitions[partno].nodelist, newvq, entries);
+
+		if (qb_loop_poll_add(poll_loop,
+				     QB_LOOP_MED,
+				     newvq->fd,
+				     POLLIN | POLLERR,
+				     newvq,
+				     vq_parent_read_fn)) {
+			perror("qb_loop_poll_add returned error");
+			return -1;
+		}
+
+		/* Send sync with all the nodes so far in it. */
+		send_partition_to_nodes(&partitions[partno]);
+	}
+	return 0;
 }
 
 static void create_nodes_from_config(qb_loop_t *poll_loop)
@@ -196,7 +226,6 @@ static void create_nodes_from_config(qb_loop_t *poll_loop)
 	uint32_t node_pos;
 	uint32_t nodeid;
 	const char *iter_key;
-	struct vq_instance *newvq;
 	int res;
 
 	init_partitions();
@@ -214,36 +243,105 @@ static void create_nodes_from_config(qb_loop_t *poll_loop)
 
 		snprintf(tmp_key, ICMAP_KEYNAME_MAXLEN, "nodelist.node.%u.nodeid", node_pos);
 		if (icmap_get_uint32(tmp_key, &nodeid) == CS_OK) {
-
-			newvq = malloc(sizeof(struct vq_instance));
-			if (newvq) {
-				newvq->instance = vq_create_instance(poll_loop, nodeid);
-				newvq->partition = &partition[0];
-				newvq->nodeid = nodeid;
-				newvq->fd = vq_get_parent_fd(newvq->instance);
-				TAILQ_INSERT_TAIL(&partition[0].nodelist, newvq, entries);
-
-				if (qb_loop_poll_add(poll_loop,
-						     QB_LOOP_MED,
-						     newvq->fd,
-						     POLLIN | POLLERR,
-						     newvq,
-						     vq_parent_read_fn)) {
-					perror("qb_loop_poll_add returned error");
-				}
-
-				/* Send sync with all the nodes so far in it. */
-				send_partition_to_nodes(&partition[0]);
-			}
+			create_node(nodeid, 0);
 		}
 
 	}
 	icmap_iter_finalize(iter);
 }
 
+static struct vq_node *find_node(int nodeid)
+{
+	int i;
+	struct vq_node *vqn;
+
+	for (i=0; i<MAX_PARTITIONS; i++) {
+		TAILQ_FOREACH(vqn, &partitions[i].nodelist, entries) {
+			if (vqn->nodeid == nodeid) {
+				return vqn;
+			}
+		}
+	}
+	return NULL;
+}
+
+/* Routines called from the parser */
+void cmd_start_new_node(int nodeid, int partition)
+{
+	struct vq_node *node;
+
+	node = find_node(nodeid);
+	if (node) {
+		fprintf(stderr, "ERR: nodeid %d already exists in partition %d\n", nodeid, node->partition->num);
+	}
+	create_node(nodeid, partition);
+}
+
+void cmd_stop_node(int nodeid, int partition)
+{
+	struct vq_node *node;
+	struct vq_partition *part;
+
+	node = find_node(nodeid);
+	if (!node) {
+		fprintf(stderr, "ERR: nodeid %d is not up\n", nodeid);
+		return;
+	}
+
+	if (partition != 0 && partition != node->partition->num) {
+		fprintf(stderr, "ERR: nodeid %d is in partition %d\n", nodeid, node->partition->num);
+		return;
+	}
+	part = node->partition;
+
+	/* Remove processor */
+	vq_quit(node->instance);
+
+	/* Rxemove from partition list */
+	TAILQ_REMOVE(&part->nodelist, node, entries);
+	free(node);
+
+	/* rebuild quorum */
+	send_partition_to_nodes(part);
+}
+
+/* ---------------------------------- */
+
+static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
+{
+	char buffer[8192];
+	int len;
+
+	len = read(fd, buffer, sizeof(buffer));
+	if (len) {
+		if (buffer[len-1] == '\n') {
+			buffer[len-1] = '\0';
+		}
+		buffer[len] = '\0';
+
+		parse_input_command(buffer, len);
+	}
+	else {
+		return -1;
+	}
+
+	return 0;
+}
+
+static void start_kb_input(qb_loop_t *poll_loop)
+{
+	if (qb_loop_poll_add(poll_loop,
+			     QB_LOOP_MED,
+			     STDIN_FILENO,
+			     POLLIN | POLLERR,
+			     NULL,
+			     stdin_read_fn)) {
+		perror("qb_loop_poll_add returned error");
+	}
+}
+
 int main(int argc, char **argv)
 {
-	qb_loop_t *poll_loop;
 	qb_loop_signal_handle sigchld_qb_handle;
 
 	qb_log_filter_ctl(QB_LOG_SYSLOG, QB_LOG_FILTER_ADD,
@@ -266,6 +364,8 @@ int main(int argc, char **argv)
 	/* Create a full cluster of nodes from corosync.conf */
 	read_corosync_conf();
 	create_nodes_from_config(poll_loop);
+
+	start_kb_input(poll_loop);
 
 	qb_loop_run(poll_loop);
 	return 0;

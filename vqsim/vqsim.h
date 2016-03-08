@@ -45,5 +45,9 @@ vq_object_t vq_create_instance(qb_loop_t *poll_loop, int nodeid);
 void vq_quit(vq_object_t instance);
 int vq_set_nodelist(vq_object_t instance, struct memb_ring_id *ring_id, int *nodeids, int nodeids_entries);
 int vq_get_parent_fd(vq_object_t instance);
+int parse_input_command(char *cmd, int len);
+
+void cmd_stop_node(int nodeid, int partition);
+void cmd_start_new_node(int nodeid, int partition);
 
 int fork_new_instance(int nodeid, int *vq_sock);
