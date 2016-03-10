@@ -17,9 +17,6 @@
 extern int coroparse_configparse (icmap_map_t config_map, const char **error_string);
 extern int corosync_log_config_read (const char **error_string);
 
-#define MAX_NODES 1024
-#define MAX_PARTITIONS 16
-
 /* One of these per partition */
 struct vq_partition {
 	TAILQ_HEAD(, vq_node) nodelist;
@@ -40,11 +37,11 @@ static struct vq_partition partitions[MAX_PARTITIONS];
 static qb_loop_t *poll_loop;
 static int autofence;
 
-static void print_qmsg(struct vqsim_quorum_msg *qmsg)
+static void print_qmsg(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
 {
 	int i;
 
-	fprintf(stderr, "%d: quorate = %d ring = %d/%lld ", qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
+	fprintf(stderr, "%d:%d: q=%d ring=[%d/%lld] ", node->partition->num, qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
 	fprintf(stderr, "nodes = [");
 	for (i = 0; i<qmsg->view_list_entries; i++) {
 		if (i) {
@@ -86,7 +83,7 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 			switch (msg->type) {
 			case VQMSG_QUORUM:
 				qmsg = (void*)msgbuf;
-				print_qmsg(qmsg);
+				print_qmsg(vqn, qmsg);
 				break;
 			case VQMSG_EXEC:
 				/* Message from votequorum, pass around the partition */
@@ -273,6 +270,7 @@ void cmd_start_new_node(int nodeid, int partition)
 	node = find_node(nodeid);
 	if (node) {
 		fprintf(stderr, "ERR: nodeid %d already exists in partition %d\n", nodeid, node->partition->num);
+		return;
 	}
 	create_node(nodeid, partition);
 }
@@ -305,9 +303,53 @@ void cmd_stop_node(int nodeid, int partition)
 	send_partition_to_nodes(part);
 }
 
+/* Move all nodes in 'nodelist' into partition 'partition' */
+void cmd_move_nodes(int partition, int num_nodes, int *nodelist)
+{
+	int i;
+	struct vq_node *node;
+
+	for (i=0; i<num_nodes; i++) {
+		node = find_node(nodelist[i]);
+
+		/* Remove it from the current partition */
+		TAILQ_REMOVE(&node->partition->nodelist, node, entries);
+
+		/* Add it to the new partition */
+		TAILQ_INSERT_TAIL(&partitions[partition].nodelist, node, entries);
+		node->partition = &partitions[partition];
+	}
+}
+
+/* Take all the nodes in part2 and join them to part1 */
+void cmd_join_partitions(int part1, int part2)
+{
+	struct vq_node *vqn;
+
+	/* TAILQ_FOREACH is not delete safe *sigh* */
+retry:
+	TAILQ_FOREACH(vqn, &partitions[part2].nodelist, entries) {
+
+		TAILQ_REMOVE(&vqn->partition->nodelist, vqn, entries);
+		TAILQ_INSERT_TAIL(&partitions[part1].nodelist, vqn, entries);
+		vqn->partition = &partitions[part1];
+
+		goto retry;
+	}
+}
+
 void cmd_set_autofence(int onoff)
 {
 	autofence = onoff;
+}
+
+void cmd_update_all_partitions()
+{
+	int i;
+
+	for (i=0; i<MAX_PARTITIONS; i++) {
+		send_partition_to_nodes(&partitions[i]);
+	}
 }
 
 /* ---------------------------------- */

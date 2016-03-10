@@ -39,6 +39,9 @@ struct vqsim_exec_msg
 	char execmsg[];
 };
 
+#define MAX_NODES 1024
+#define MAX_PARTITIONS 16
+
 /* In vq_object.c */
 vq_object_t vq_create_instance(qb_loop_t *poll_loop, int nodeid);
 void vq_quit(vq_object_t instance);
@@ -53,4 +56,6 @@ int parse_input_command(char *cmd, int len);
 void cmd_stop_node(int nodeid, int partition);
 void cmd_start_new_node(int nodeid, int partition);
 void cmd_set_autofence(int onoff);
-
+void cmd_move_nodes(int partition, int num_nodes, int *nodelist);
+void cmd_join_partitions(int part1, int part2);
+void cmd_update_all_partitions(void);
