@@ -5,6 +5,7 @@
 #include <sys/poll.h>
 #include <netinet/in.h>
 #include <sys/queue.h>
+#include <readline/readline.h>
 
 #include "../exec/votequorum.h"
 #include <corosync/logsys.h>
@@ -359,6 +360,11 @@ void cmd_update_all_partitions(int newring)
 
 static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 {
+
+	/* Send it to readline */
+	rl_callback_read_char();
+	return 0;
+#if 0
 	char buffer[8192];
 	int len;
 
@@ -377,10 +383,14 @@ static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 	}
 
 	return 0;
+#endif
 }
 
 static void start_kb_input(qb_loop_t *poll_loop)
 {
+
+	rl_callback_handler_install("vqsim> ", parse_input_command);
+
 	if (qb_loop_poll_add(poll_loop,
 			     QB_LOOP_MED,
 			     STDIN_FILENO,

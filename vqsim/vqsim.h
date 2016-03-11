@@ -50,7 +50,7 @@ int vq_get_parent_fd(vq_object_t instance);
 int fork_new_instance(int nodeid, int *vq_sock);
 
 /* In parser.c */
-int parse_input_command(char *cmd, int len);
+void parse_input_command(char *cmd);
 
 /* These are in vqmain.c */
 void cmd_stop_node(int nodeid);
