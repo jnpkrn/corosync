@@ -152,15 +152,17 @@ static int32_t sigchld_handler(int32_t signal, void *data)
 	return 0;
 }
 
-static void send_partition_to_nodes(struct vq_partition *partition)
+static void send_partition_to_nodes(struct vq_partition *partition, int newring)
 {
 	struct vq_node *vqn;
 	int nodelist[MAX_NODES];
 	int nodes = 0;
 	int first = 1;
 
-	/* Simulate corosync incrementing the seq by 4 for added authenticity */
-	partition->ring_id.seq += 4;
+	if (newring) {
+		/* Simulate corosync incrementing the seq by 4 for added authenticity */
+		partition->ring_id.seq += 4;
+	}
 
 	/* Build the node list */
 	TAILQ_FOREACH(vqn, &partition->nodelist, entries) {
@@ -211,7 +213,7 @@ static int create_node(int nodeid, int partno)
 		}
 
 		/* Send sync with all the nodes so far in it. */
-		send_partition_to_nodes(&partitions[partno]);
+		send_partition_to_nodes(&partitions[partno], 1);
 	}
 	return 0;
 }
@@ -275,7 +277,7 @@ void cmd_start_new_node(int nodeid, int partition)
 	create_node(nodeid, partition);
 }
 
-void cmd_stop_node(int nodeid, int partition)
+void cmd_stop_node(int nodeid)
 {
 	struct vq_node *node;
 	struct vq_partition *part;
@@ -286,10 +288,6 @@ void cmd_stop_node(int nodeid, int partition)
 		return;
 	}
 
-	if (partition != 0 && partition != node->partition->num) {
-		fprintf(stderr, "ERR: nodeid %d is in partition %d\n", nodeid, node->partition->num);
-		return;
-	}
 	part = node->partition;
 
 	/* Remove processor */
@@ -300,7 +298,7 @@ void cmd_stop_node(int nodeid, int partition)
 	free(node);
 
 	/* Rebuild quorum */
-	send_partition_to_nodes(part);
+	send_partition_to_nodes(part, 1);
 }
 
 /* Move all nodes in 'nodelist' into partition 'partition' */
@@ -311,13 +309,18 @@ void cmd_move_nodes(int partition, int num_nodes, int *nodelist)
 
 	for (i=0; i<num_nodes; i++) {
 		node = find_node(nodelist[i]);
+		if (node) {
 
-		/* Remove it from the current partition */
-		TAILQ_REMOVE(&node->partition->nodelist, node, entries);
+			/* Remove it from the current partition */
+			TAILQ_REMOVE(&node->partition->nodelist, node, entries);
 
-		/* Add it to the new partition */
-		TAILQ_INSERT_TAIL(&partitions[partition].nodelist, node, entries);
-		node->partition = &partitions[partition];
+			/* Add it to the new partition */
+			TAILQ_INSERT_TAIL(&partitions[partition].nodelist, node, entries);
+			node->partition = &partitions[partition];
+		}
+		else {
+			printf("ERR: node %d does not exist\n", nodelist[i]);
+		}
 	}
 }
 
@@ -343,12 +346,12 @@ void cmd_set_autofence(int onoff)
 	autofence = onoff;
 }
 
-void cmd_update_all_partitions()
+void cmd_update_all_partitions(int newring)
 {
 	int i;
 
 	for (i=0; i<MAX_PARTITIONS; i++) {
-		send_partition_to_nodes(&partitions[i]);
+		send_partition_to_nodes(&partitions[i], newring);
 	}
 }
 

@@ -28,6 +28,7 @@ static char buffer[8192];
 static int our_nodeid;
 static char *private_data;
 static qb_loop_t *poll_loop;
+static qb_loop_timer_handle sync_timer;
 static int we_are_quorate;
 
 static void api_error_memory_failure() __attribute__((noreturn));
@@ -110,6 +111,7 @@ static struct corosync_api_v1 corosync_api = {
 // CC: maybe put those in their own file.
 /* --------------------------------------------------------------------------------- */
 
+static void start_sync_timer(void);
 
 /* Callback from Votequorum to tell us about the quorum state */
 static void quorum_fn(const unsigned int *view_list,
@@ -171,6 +173,27 @@ static int load_quorum_instance(struct corosync_api_v1 *api)
 	return 0;
 }
 
+static void sync_dispatch_fn(void *data)
+{
+	if (engine->sync_process()) {
+//		fprintf(stderr, "%d: waiting for sync to finish\n", our_nodeid);
+		start_sync_timer();
+	}
+	else {
+		engine->sync_activate();
+	}
+}
+
+static void start_sync_timer()
+{
+	qb_loop_timer_add(poll_loop,
+			  QB_LOOP_MED,
+			  10000000,
+			  NULL,
+			  sync_dispatch_fn,
+			  &sync_timer);
+}
+
 static void send_sync(char *buffer, int len)
 {
 	struct vqsim_sync_msg *msg = (void*)buffer;
@@ -179,7 +202,8 @@ static void send_sync(char *buffer, int len)
 	engine->sync_init(NULL, 0,
 			  msg->view_list, msg->view_list_entries,
 			  &msg->ring_id);
-	engine->sync_activate();
+
+	start_sync_timer();
 }
 
 static void send_exec_msg(char *buffer, int len)
@@ -232,8 +256,7 @@ static void initial_sync(int nodeid)
 	engine->sync_init(trans_list, 1,
 			  member_list, 1,
 			  &ring_id);
-//		while (!engine->sync_process()) fprintf(stderr, "waiting for sync to finish\n");
-	engine->sync_activate();
+	start_sync_timer();
 }
 
 /* Return pipe FDs if sucessful */

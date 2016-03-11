@@ -53,9 +53,9 @@ int fork_new_instance(int nodeid, int *vq_sock);
 int parse_input_command(char *cmd, int len);
 
 /* These are in vqmain.c */
-void cmd_stop_node(int nodeid, int partition);
+void cmd_stop_node(int nodeid);
 void cmd_start_new_node(int nodeid, int partition);
 void cmd_set_autofence(int onoff);
 void cmd_move_nodes(int partition, int num_nodes, int *nodelist);
 void cmd_join_partitions(int part1, int part2);
-void cmd_update_all_partitions(void);
+void cmd_update_all_partitions(int newring);
