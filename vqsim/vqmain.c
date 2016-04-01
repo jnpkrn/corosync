@@ -37,20 +37,21 @@ struct vq_node {
 static struct vq_partition partitions[MAX_PARTITIONS];
 static qb_loop_t *poll_loop;
 static int autofence;
+static FILE *output_file;
 
 static void print_qmsg(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
 {
 	int i;
 
-	fprintf(stderr, "%d:%d: q=%d ring=[%d/%lld] ", node->partition->num, qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
-	fprintf(stderr, "nodes = [");
+	fprintf(output_file, "%d:%d: q=%d ring=[%d/%lld] ", node->partition->num, qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
+	fprintf(output_file, "nodes = [");
 	for (i = 0; i<qmsg->view_list_entries; i++) {
 		if (i) {
-			fprintf(stderr, " ");
+			fprintf(output_file, " ");
 		}
-		fprintf(stderr, "%d", qmsg->view_list[i]);
+		fprintf(output_file, "%d", qmsg->view_list[i]);
 	}
-	fprintf(stderr, "]\n");
+	fprintf(output_file, "]\n");
 }
 
 static void propogate_vq_message(struct vq_node *vqn, const char *msg, int len)
@@ -401,9 +402,52 @@ static void start_kb_input(qb_loop_t *poll_loop)
 	}
 }
 
+static void usage(char *program)
+{
+	printf("Usage:\n");
+	printf("\n");
+	printf("%s [-f <config-file>] [-o <output-file>]\n", program);
+	printf("\n");
+	printf("    -f     config file. defaults to /etc/corosync/corosync.conf\n");
+	printf("    -o     output file. defaults to etcout\n");
+}
+
 int main(int argc, char **argv)
 {
 	qb_loop_signal_handle sigchld_qb_handle;
+	int ch;
+	char *config_file_name = NULL;
+	char *output_file_name = NULL;
+	char envstring[PATH_MAX];
+
+	while ((ch = getopt (argc, argv, "f:o:")) != EOF) {
+		switch (ch) {
+		case 'f':
+			config_file_name = optarg;
+			break;
+		case 'o':
+			output_file_name = optarg;
+			break;
+		default:
+			usage(argv[0]);
+			exit(0);
+		}
+	}
+
+	if (config_file_name) {
+		sprintf(envstring, "COROSYNC_MAIN_CONFIG_FILE=%s", config_file_name);
+		putenv(envstring);
+	}
+	if (output_file_name) {
+		output_file = fopen(output_file_name, "w");
+		if (!output_file) {
+			fprintf(stderr, "Unable to open %s for output: %s\n", output_file_name, strerror(errno));
+			exit(-1);
+		}
+	}
+	else {
+		output_file = stdout;
+	}
 
 	qb_log_filter_ctl(QB_LOG_SYSLOG, QB_LOG_FILTER_ADD,
 			  QB_LOG_FILTER_FUNCTION, "*", LOG_DEBUG);
