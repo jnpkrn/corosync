@@ -157,6 +157,7 @@ char *get_run_dir()
 static int load_quorum_instance(struct corosync_api_v1 *api)
 {
 	const char *error_string;
+	int res;
 
 	error_string = votequorum_init(api, quorum_fn);
 	if (error_string) {
@@ -170,7 +171,16 @@ static int load_quorum_instance(struct corosync_api_v1 *api)
 		fprintf(stderr, "votequorum exec init failed: %s\n", error_string);
 		return -1;
 	}
-	return 0;
+
+	private_data = malloc(engine->private_data_size);
+	if (!private_data) {
+		perror("Malloc in child failed");
+		return -1;
+	}
+
+	res = engine->lib_init_fn(NULL); // TODO: need a conn?
+
+	return res;
 }
 
 static void sync_dispatch_fn(void *data)
@@ -215,6 +225,15 @@ static void send_exec_msg(char *buffer, int len)
 	engine->exec_engine[qb_header->id & 0xFFFF].exec_handler_fn(execmsg->execmsg, execmsg->header.from_nodeid);
 }
 
+static void send_lib_msg(char *buffer, int len)
+{
+	struct vqsim_lib_msg *libmsg = (void*)buffer;
+	struct qb_ipc_request_header *qb_header = (void*)libmsg->libmsg;
+
+	fprintf(stderr, "%d: LIB message %d received from %d\n", our_nodeid, qb_header->id & 0xFFFF, libmsg->header.from_nodeid);
+	engine->lib_engine[qb_header->id & 0xFFFF].lib_handler_fn(NULL, libmsg->libmsg); // TODO: need a valid conn?
+}
+
 
 /* From controller */
 static int parent_pipe_read_fn(int32_t fd, int32_t revents, void *data)
@@ -235,6 +254,9 @@ static int parent_pipe_read_fn(int32_t fd, int32_t revents, void *data)
 			break;
 		case VQMSG_SYNC:
 			send_sync(buffer, len);
+			break;
+		case VQMSG_LIB:
+			send_lib_msg(buffer, len);
 			break;
 		case VQMSG_QUORUM:
 			/* not used here */
@@ -287,12 +309,6 @@ int fork_new_instance(int nodeid, int *vq_sock)
 	poll_loop = qb_loop_create();
 
 	load_quorum_instance(&corosync_api);
-
-	private_data = malloc(engine->private_data_size);
-	if (!private_data) {
-		perror("Malloc in child failed");
-		return -1;
-	}
 
 	qb_loop_poll_add(poll_loop,
 			 QB_LOOP_MED,

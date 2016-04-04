@@ -3,6 +3,7 @@ typedef enum {VQMSG_QUIT=1,
 	      VQMSG_SYNC,   /* set nodelist */
 	      VQMSG_QUORUM, /* quorum state of this 'node' */
 	      VQMSG_EXEC,   /* message for exec_handler */
+	      VQMSG_LIB,    /* message for lib_handler */
 } vqsim_msg_type_t;
 
 typedef struct vq_instance *vq_object_t;
@@ -39,6 +40,12 @@ struct vqsim_exec_msg
 	char execmsg[];
 };
 
+struct vqsim_lib_msg
+{
+	struct vqsim_msg_header header;
+	char libmsg[];
+};
+
 #define MAX_NODES 1024
 #define MAX_PARTITIONS 16
 
@@ -47,6 +54,9 @@ vq_object_t vq_create_instance(qb_loop_t *poll_loop, int nodeid);
 void vq_quit(vq_object_t instance);
 int vq_set_nodelist(vq_object_t instance, struct memb_ring_id *ring_id, int *nodeids, int nodeids_entries);
 int vq_get_parent_fd(vq_object_t instance);
+int vq_set_qdevice(vq_object_t instance, struct memb_ring_id *ring_id, int onoff);
+
+/* in vqsim_vq_engine.c - effectively the constructor */
 int fork_new_instance(int nodeid, int *vq_sock);
 
 /* In parser.c */
@@ -59,3 +69,4 @@ void cmd_set_autofence(int onoff);
 void cmd_move_nodes(int partition, int num_nodes, int *nodelist);
 void cmd_join_partitions(int part1, int part2);
 void cmd_update_all_partitions(int newring);
+void cmd_qdevice_poll(int nodeid, int onoff);

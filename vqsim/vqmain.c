@@ -357,41 +357,32 @@ void cmd_update_all_partitions(int newring)
 	}
 }
 
+void cmd_qdevice_poll(int nodeid, int onoff)
+{
+	struct vq_node *node;
+
+	node = find_node(nodeid);
+	if (node) {
+		vq_set_qdevice(node->instance, &node->partition->ring_id, onoff);
+	}
+}
+
 /* ---------------------------------- */
 
 static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 {
-
 	/* Send it to readline */
 	rl_callback_read_char();
 	return 0;
-#if 0
-	char buffer[8192];
-	int len;
-
-	len = read(fd, buffer, sizeof(buffer));
-	if (len) {
-		if (buffer[len-1] == '\n') {
-			buffer[len-1] = '\0';
-		}
-		else {
-			buffer[len] = '\0';
-		}
-		parse_input_command(buffer, len);
-	}
-	else {
-		exit(0);
-	}
-
-	return 0;
-#endif
 }
 
 static void start_kb_input(qb_loop_t *poll_loop)
 {
 
+	/* Readline will deal with completed lines when they arrive */
 	rl_callback_handler_install("vqsim> ", parse_input_command);
 
+	/* Send stdin to readline */
 	if (qb_loop_poll_add(poll_loop,
 			     QB_LOOP_MED,
 			     STDIN_FILENO,
@@ -409,7 +400,8 @@ static void usage(char *program)
 	printf("%s [-f <config-file>] [-o <output-file>]\n", program);
 	printf("\n");
 	printf("    -f     config file. defaults to /etc/corosync/corosync.conf\n");
-	printf("    -o     output file. defaults to etcout\n");
+	printf("    -o     output file. defaults to stdout\n");
+	printf("    -h     display this help text\n");
 }
 
 int main(int argc, char **argv)
@@ -420,7 +412,7 @@ int main(int argc, char **argv)
 	char *output_file_name = NULL;
 	char envstring[PATH_MAX];
 
-	while ((ch = getopt (argc, argv, "f:o:")) != EOF) {
+	while ((ch = getopt (argc, argv, "f:o:h")) != EOF) {
 		switch (ch) {
 		case 'f':
 			config_file_name = optarg;
