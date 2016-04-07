@@ -88,36 +88,35 @@ int vq_set_qdevice(vq_object_t instance, struct memb_ring_id *ring_id, int onoff
 	struct req_lib_votequorum_qdevice_poll *pollmsg = (void*)msgbuf+sizeof(struct vqsim_lib_msg);
 	int res;
 
+	msg->header.type = VQMSG_LIB;
+	msg->header.from_nodeid = 0;
+	msg->header.param = 0;
+
 	// TODO: split this
 	if (!vqi->qdevice_registered) {
 		strcpy(regmsg->name, QDEVICE_NAME);
 		regmsg->header.id = MESSAGE_REQ_VOTEQUORUM_QDEVICE_REGISTER;
 
-		msg->header.type = VQMSG_LIB;
-		msg->header.from_nodeid = 0;
-		msg->header.param = 0;
 		res = write(vqi->vq_socket, msgbuf, sizeof(msgbuf));
 		if (res <= 0) {
 			perror("qdevice register write failed");
 			return -1;
 		}
 		vqi->qdevice_registered = 1;
+		return 0;
 	}
+	else {
+		strcpy(pollmsg->name, QDEVICE_NAME);
+		pollmsg->header.id = MESSAGE_REQ_VOTEQUORUM_QDEVICE_POLL;
+		pollmsg->cast_vote = onoff;
+		pollmsg->ring_id.nodeid = ring_id->rep.nodeid;
+		pollmsg->ring_id.seq = ring_id->seq;
 
-	msg->header.type = VQMSG_LIB;
-	msg->header.from_nodeid = 0;
-	msg->header.param = 0;
-
-	strcpy(pollmsg->name, QDEVICE_NAME);
-	pollmsg->header.id = MESSAGE_REQ_VOTEQUORUM_QDEVICE_POLL;
-	pollmsg->cast_vote = onoff;
-	pollmsg->ring_id.nodeid = ring_id->rep.nodeid;
-	pollmsg->ring_id.seq = ring_id->seq;
-
-	res = write(vqi->vq_socket, msgbuf, sizeof(msgbuf));
-	if (res <= 0) {
-		perror("qdevice poll write failed");
-		return -1;
+		res = write(vqi->vq_socket, msgbuf, sizeof(msgbuf));
+		if (res <= 0) {
+			perror("qdevice poll write failed");
+			return -1;
+		}
 	}
 	return 0;
 }

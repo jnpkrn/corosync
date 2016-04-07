@@ -30,6 +30,10 @@ static char *private_data;
 static qb_loop_t *poll_loop;
 static qb_loop_timer_handle sync_timer;
 static int we_are_quorate;
+static void *fake_conn = (void*)1;
+static cs_error_t last_lib_error;
+
+
 
 static void api_error_memory_failure() __attribute__((noreturn));
 static void api_error_memory_failure()
@@ -83,7 +87,7 @@ static int api_totem_mcast(const struct iovec *iov, unsigned int iovlen, unsigne
 
 	res = writev(parent_socket, iovec, iovlen+1);
 	if (res != total) {
-		fprintf(stderr, "writev wrong only %d of %d bytes\n", res, total);
+		fprintf(stderr, "writev wrote only %d of %d bytes\n", res, total);
 	}
 	return 0;
 }
@@ -93,7 +97,10 @@ static void *api_ipc_private_data_get(void *conn)
 }
 static int api_ipc_response_send(void *conn, const void *msg, size_t len)
 {
-	/* We don't really need this to do anything here */
+	struct qb_ipc_response_header *qb_header = (void*)msg;
+
+	/* Save the error so we can return it */
+	last_lib_error = qb_header->error;
 	return 0;
 }
 
@@ -109,7 +116,7 @@ static struct corosync_api_v1 corosync_api = {
 
 /* -------------------- Above is all for providing the corosync_api support routines --------------------------------------------*/
 // CC: maybe put those in their own file.
-/* --------------------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------------------------------------------------------------- */
 
 static void start_sync_timer(void);
 
@@ -178,7 +185,7 @@ static int load_quorum_instance(struct corosync_api_v1 *api)
 		return -1;
 	}
 
-	res = engine->lib_init_fn(NULL); // TODO: need a conn?
+	res = engine->lib_init_fn(fake_conn);
 
 	return res;
 }
@@ -230,8 +237,11 @@ static void send_lib_msg(char *buffer, int len)
 	struct vqsim_lib_msg *libmsg = (void*)buffer;
 	struct qb_ipc_request_header *qb_header = (void*)libmsg->libmsg;
 
-	fprintf(stderr, "%d: LIB message %d received from %d\n", our_nodeid, qb_header->id & 0xFFFF, libmsg->header.from_nodeid);
-	engine->lib_engine[qb_header->id & 0xFFFF].lib_handler_fn(NULL, libmsg->libmsg); // TODO: need a valid conn?
+	/* Clear this as not all lib functions return a response immediately */
+	last_lib_error = CS_OK;
+
+	engine->lib_engine[qb_header->id & 0xFFFF].lib_handler_fn(fake_conn, libmsg->libmsg);
+//	fprintf(stderr, "%d: LIB message error return from %d is %d\n", our_nodeid, qb_header->id & 0xFFFF, last_lib_error);
 }
 
 

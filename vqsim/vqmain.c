@@ -93,6 +93,7 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 				break;
 			case VQMSG_QUIT:
 			case VQMSG_SYNC:
+			case VQMSG_LIB:
 				/* not used here */
 				break;
 			}
