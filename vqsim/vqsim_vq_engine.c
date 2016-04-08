@@ -14,12 +14,17 @@
 #include <stdio.h>
 
 #include "../exec/votequorum.h"
+#include "../include/corosync/corotypes.h"
+#include "../include/corosync/votequorum.h"
+#include "../include/corosync/ipc_votequorum.h"
 #include <corosync/logsys.h>
 #include <corosync/coroapi.h>
 #include "service.h"
 #include "icmap.h"
 
 #include "vqsim.h"
+
+#define QDEVICE_NAME "VQsim_qdevice"
 
 /* Static variables here are per-instance because we are forked */
 static struct corosync_service_engine *engine;
@@ -29,12 +34,15 @@ static int our_nodeid;
 static char *private_data;
 static qb_loop_t *poll_loop;
 static qb_loop_timer_handle sync_timer;
+static qb_loop_timer_handle qdevice_timer;
 static int we_are_quorate;
 static void *fake_conn = (void*)1;
 static cs_error_t last_lib_error;
+static struct memb_ring_id current_ring_id;
+static int qdevice_registered;
+static unsigned int qdevice_timeout = VOTEQUORUM_QDEVICE_DEFAULT_TIMEOUT;
 
-
-
+static void start_qdevice_poll(int longwait);
 static void api_error_memory_failure() __attribute__((noreturn));
 static void api_error_memory_failure()
 {
@@ -144,6 +152,7 @@ static void quorum_fn(const unsigned int *view_list,
 	if ( (len=write(parent_socket, msgbuf, sizeof(*quorum_msg) + sizeof(unsigned int)*view_list_entries)) <= 0) {
 		perror("write (view list to parent) failed");
 	}
+	memcpy(&current_ring_id, ring_id, sizeof(*ring_id));
 //	fprintf(stderr, "%d: quorum callback %d write returned %d\n", our_nodeid, quorate, len);
 }
 
@@ -232,16 +241,91 @@ static void send_exec_msg(char *buffer, int len)
 	engine->exec_engine[qb_header->id & 0xFFFF].exec_handler_fn(execmsg->execmsg, execmsg->header.from_nodeid);
 }
 
-static void send_lib_msg(char *buffer, int len)
+static int send_lib_msg(int type, void *msg)
 {
-	struct vqsim_lib_msg *libmsg = (void*)buffer;
-	struct qb_ipc_request_header *qb_header = (void*)libmsg->libmsg;
-
 	/* Clear this as not all lib functions return a response immediately */
 	last_lib_error = CS_OK;
 
-	engine->lib_engine[qb_header->id & 0xFFFF].lib_handler_fn(fake_conn, libmsg->libmsg);
-//	fprintf(stderr, "%d: LIB message error return from %d is %d\n", our_nodeid, qb_header->id & 0xFFFF, last_lib_error);
+	engine->lib_engine[type].lib_handler_fn(fake_conn, msg);
+
+//	fprintf(stderr, "%d: LIB message error return from %d is %d\n", our_nodeid, type, last_lib_error);
+	return last_lib_error;
+}
+
+static int poll_qdevice(int onoff)
+{
+	struct req_lib_votequorum_qdevice_poll pollmsg;
+	int res;
+
+	pollmsg.cast_vote = onoff;
+	pollmsg.ring_id.nodeid = current_ring_id.rep.nodeid;
+	pollmsg.ring_id.seq = current_ring_id.seq;
+	strcpy(pollmsg.name, QDEVICE_NAME);
+
+	res = send_lib_msg(MESSAGE_REQ_VOTEQUORUM_QDEVICE_POLL, &pollmsg);
+	if (res != CS_OK) {
+		fprintf(stderr, "%d: qdevice poll failed: %d\n", our_nodeid, res);
+	}
+	return res;
+}
+
+static void qdevice_dispatch_fn(void *data)
+{
+	if (poll_qdevice(1) == CS_OK) {
+		start_qdevice_poll(0);
+	}
+}
+
+static void start_qdevice_poll(int longwait)
+{
+	unsigned long long timeout;
+
+	timeout = (unsigned long long)qdevice_timeout*500000; /* Half the corosync timeout */
+	if (longwait) {
+		timeout *= 2;
+	}
+
+	qb_loop_timer_add(poll_loop,
+			  QB_LOOP_MED,
+			  timeout,
+			  NULL,
+			  qdevice_dispatch_fn,
+			  &qdevice_timer);
+}
+
+static void stop_qdevice_poll()
+{
+	qb_loop_timer_del(poll_loop, qdevice_timer);
+	qdevice_timer = 0;
+}
+
+static void do_qdevice(int onoff)
+{
+	int res;
+
+	if (onoff) {
+		if (!qdevice_registered) {
+			struct req_lib_votequorum_qdevice_register regmsg;
+
+			strcpy(regmsg.name, QDEVICE_NAME);
+			if ( (res=send_lib_msg(MESSAGE_REQ_VOTEQUORUM_QDEVICE_REGISTER, &regmsg)) == CS_OK) {
+				qdevice_registered = 1;
+				start_qdevice_poll(1);
+			}
+			else {
+				fprintf(stderr, "%d: qdevice registration failed: %d\n", our_nodeid, res);
+			}
+		}
+		else {
+			if (!qdevice_timer) {
+				start_qdevice_poll(0);
+			}
+		}
+	}
+	else {
+		poll_qdevice(0);
+		stop_qdevice_poll();
+	}
 }
 
 
@@ -265,8 +349,8 @@ static int parent_pipe_read_fn(int32_t fd, int32_t revents, void *data)
 		case VQMSG_SYNC:
 			send_sync(buffer, len);
 			break;
-		case VQMSG_LIB:
-			send_lib_msg(buffer, len);
+		case VQMSG_QDEVICE:
+			do_qdevice(header->param);
 			break;
 		case VQMSG_QUORUM:
 			/* not used here */
@@ -281,6 +365,7 @@ static void initial_sync(int nodeid)
 	unsigned int trans_list[1] = {nodeid};
 	unsigned int member_list[1] = {nodeid};
 	struct memb_ring_id ring_id;
+
 	ring_id.rep.nodeid = our_nodeid;
 	ring_id.seq = 1;
 
@@ -314,9 +399,12 @@ int fork_new_instance(int nodeid, int *vq_sock)
 		return 0;
 	}
 
-
 	our_nodeid = nodeid;
 	poll_loop = qb_loop_create();
+
+	if (icmap_get_uint32("quorum.device.timeout", &qdevice_timeout) != CS_OK) {
+		qdevice_timeout = VOTEQUORUM_QDEVICE_DEFAULT_TIMEOUT;
+	}
 
 	load_quorum_instance(&corosync_api);
 

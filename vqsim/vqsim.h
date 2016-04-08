@@ -1,9 +1,9 @@
 
 typedef enum {VQMSG_QUIT=1,
-	      VQMSG_SYNC,   /* set nodelist */
-	      VQMSG_QUORUM, /* quorum state of this 'node' */
-	      VQMSG_EXEC,   /* message for exec_handler */
-	      VQMSG_LIB,    /* message for lib_handler */
+	      VQMSG_SYNC,    /* set nodelist */
+	      VQMSG_QUORUM,  /* quorum state of this 'node' */
+	      VQMSG_EXEC,    /* message for exec_handler */
+	      VQMSG_QDEVICE, /* quorum device enable/disable */
 } vqsim_msg_type_t;
 
 typedef struct vq_instance *vq_object_t;
@@ -64,6 +64,7 @@ void parse_input_command(char *cmd);
 
 /* These are in vqmain.c */
 void cmd_stop_node(int nodeid);
+void cmd_stop_all_nodes(void);
 void cmd_start_new_node(int nodeid, int partition);
 void cmd_set_autofence(int onoff);
 void cmd_move_nodes(int partition, int num_nodes, int *nodelist);

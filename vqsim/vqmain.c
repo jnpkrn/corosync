@@ -44,7 +44,7 @@ static void print_qmsg(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
 	int i;
 
 	fprintf(output_file, "%d:%d: q=%d ring=[%d/%lld] ", node->partition->num, qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
-	fprintf(output_file, "nodes = [");
+	fprintf(output_file, "nodes=[");
 	for (i = 0; i<qmsg->view_list_entries; i++) {
 		if (i) {
 			fprintf(output_file, " ");
@@ -93,7 +93,7 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 				break;
 			case VQMSG_QUIT:
 			case VQMSG_SYNC:
-			case VQMSG_LIB:
+			case VQMSG_QDEVICE:
 				/* not used here */
 				break;
 			}
@@ -278,6 +278,18 @@ void cmd_start_new_node(int nodeid, int partition)
 		return;
 	}
 	create_node(nodeid, partition);
+}
+
+void cmd_stop_all_nodes()
+{
+	int i;
+	struct vq_node *vqn;
+
+	for (i=0; i<MAX_PARTITIONS; i++) {
+		TAILQ_FOREACH(vqn, &partitions[i].nodelist, entries) {
+			vq_quit(vqn->instance);
+		}
+	}
 }
 
 void cmd_stop_node(int nodeid)
