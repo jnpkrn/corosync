@@ -201,6 +201,7 @@ AC_CONFIG_FILES([Makefile
 		 tools/Makefile
 		 conf/Makefile
 		 qdevices/Makefile
+		 vqsim/Makefile
 		 Doxyfile
 		 conf/logrotate/Makefile])
 
@@ -396,6 +397,11 @@ AC_ARG_ENABLE([qdevices],
 	[ enable_qdevices="no" ])
 AM_CONDITIONAL(BUILD_QDEVICES, test x$enable_qdevices = xyes)
 
+AC_ARG_ENABLE([vqsim],
+	[  --enable-vqsim               : Quorum simulator support ],,
+	[ enable_vqsim="no" ])
+AM_CONDITIONAL(BUILD_VQSIM, test x$enable_vqsim = xyes)
+
 # *FLAGS handling goes here
 
 ENV_CFLAGS="$CFLAGS"
@@ -475,6 +481,9 @@ if test "x${enable_xmlconf}" = xyes; then
 fi
 if test "x${enable_qdevices}" = xyes; then
 	PACKAGE_FEATURES="$PACKAGE_FEATURES qdevices"
+fi
+if test "x${enable_vqsim}" = xyes; then
+	PACKAGE_FEATURES="$PACKAGE_FEATURES vqsim"
 fi
 
 do_snmp=0
