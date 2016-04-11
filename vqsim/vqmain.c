@@ -8,9 +8,10 @@
 #include <readline/readline.h>
 
 #include "../exec/votequorum.h"
+#include "../exec/service.h"
 #include <corosync/logsys.h>
 #include <corosync/coroapi.h>
-#include "service.h"
+
 #include "icmap.h"
 #include "vqsim.h"
 
@@ -50,7 +51,7 @@ static struct vq_node *find_by_pid(pid_t pid);
 static void send_partition_to_nodes(struct vq_partition *partition, int newring);
 
 /* Tell all non-quorate nodes to quit */
-static void force_fence()
+static void force_fence(void)
 {
 	int i;
 	struct vq_node *vqn;
@@ -147,7 +148,7 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 }
 
 
-static int read_corosync_conf()
+static int read_corosync_conf(void)
 {
 	int res;
 	const char *error_string;
@@ -193,12 +194,12 @@ static void remove_node(struct vq_node *node)
 	send_partition_to_nodes(part, 1);
 }
 
-static int32_t sigchld_handler(int32_t signal, void *data)
+static int32_t sigchld_handler(int32_t sig, void *data)
 {
 	pid_t pid;
 	int status;
 	struct vq_node *vqn;
-	char *exit_status;
+	const char *exit_status="";
 	char text[132];
 
 	pid = wait(&status);
@@ -263,7 +264,7 @@ static void send_partition_to_nodes(struct vq_partition *partition, int newring)
 	}
 }
 
-static void init_partitions()
+static void init_partitions(void)
 {
 	int i;
 
@@ -303,7 +304,7 @@ static int create_node(int nodeid, int partno)
 	return 0;
 }
 
-static void create_nodes_from_config(qb_loop_t *poll_loop)
+static void create_nodes_from_config(void)
 {
 	icmap_iter_t iter;
 	char tmp_key[ICMAP_KEYNAME_MAXLEN];
@@ -491,7 +492,7 @@ static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 	return 0;
 }
 
-static void start_kb_input(qb_loop_t *poll_loop)
+static void start_kb_input(void)
 {
 
 	/* Readline will deal with completed lines when they arrive */
@@ -576,9 +577,9 @@ int main(int argc, char **argv)
 
 	/* Create a full cluster of nodes from corosync.conf */
 	read_corosync_conf();
-	create_nodes_from_config(poll_loop);
+	create_nodes_from_config();
 
-	start_kb_input(poll_loop);
+	start_kb_input();
 
 	qb_loop_run(poll_loop);
 	return 0;

@@ -10,7 +10,7 @@
 #include <corosync/coroapi.h>
 #include "vqsim.h"
 
-static void do_usage()
+static void do_usage(void)
 {
 	printf("  All node IDs in the cluster are unique and belong to a numbered 'partition' (default=0)\n");
 	printf("\n");
@@ -44,7 +44,7 @@ static void run_autofence_cmd(int argc, char **argv);
 static void run_qdevice_cmd(int argc, char **argv);
 
 static struct cmd_list_struct {
-	char *cmd;
+	const char *cmd;
 	int min_args;
 	cmd_routine_t cmd_runner;
 } cmd_list[] = {

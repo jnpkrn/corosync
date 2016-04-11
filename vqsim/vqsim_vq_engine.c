@@ -14,14 +14,14 @@
 #include <stdio.h>
 
 #include "../exec/votequorum.h"
+#include "../exec/service.h"
 #include "../include/corosync/corotypes.h"
 #include "../include/corosync/votequorum.h"
 #include "../include/corosync/ipc_votequorum.h"
 #include <corosync/logsys.h>
 #include <corosync/coroapi.h>
-#include "service.h"
-#include "icmap.h"
 
+#include "icmap.h"
 #include "vqsim.h"
 
 #define QDEVICE_NAME "VQsim_qdevice"
@@ -42,7 +42,15 @@ static struct memb_ring_id current_ring_id;
 static int qdevice_registered;
 static unsigned int qdevice_timeout = VOTEQUORUM_QDEVICE_DEFAULT_TIMEOUT;
 
-static void api_error_memory_failure() __attribute__((noreturn));
+/* 'Keep the compiler happy' time */
+char *get_run_dir(void);
+int api_timer_add_duration (
+        unsigned long long nanosec_duration,
+        void *data,
+        void (*timer_fn) (void *data),
+        corosync_timer_handle_t *handle);
+
+static void api_error_memory_failure(void) __attribute__((noreturn));
 static void api_error_memory_failure()
 {
 	fprintf(stderr, "Out of memory error\n");
@@ -53,7 +61,7 @@ static void api_timer_delete(corosync_timer_handle_t th)
 	qb_loop_timer_del(poll_loop, th);
 }
 
-extern int api_timer_add_duration (
+int api_timer_add_duration (
         unsigned long long nanosec_duration,
         void *data,
         void (*timer_fn) (void *data),
@@ -67,7 +75,7 @@ extern int api_timer_add_duration (
                                  handle);
 }
 
-static unsigned int api_totem_nodeid_get()
+static unsigned int api_totem_nodeid_get(void)
 {
 	return our_nodeid;
 }
@@ -155,12 +163,13 @@ static void quorum_fn(const unsigned int *view_list,
 }
 
 char *corosync_service_link_and_init(struct corosync_api_v1 *api,
-				     struct default_service *engine)
+				     struct default_service *service_engine)
 {
 	/* dummy */
 	return NULL;
 }
 
+/* For votequorum */
 char *get_run_dir()
 {
 	static char cwd_buffer[PATH_MAX];
@@ -217,9 +226,9 @@ static void start_sync_timer()
 			  &sync_timer);
 }
 
-static void send_sync(char *buffer, int len)
+static void send_sync(char *buf, int len)
 {
-	struct vqsim_sync_msg *msg = (void*)buffer;
+	struct vqsim_sync_msg *msg = (void*)buf;
 
 	/* Votequorum doesn't use the transitional node list :-) */
 	engine->sync_init(NULL, 0,
@@ -229,9 +238,9 @@ static void send_sync(char *buffer, int len)
 	start_sync_timer();
 }
 
-static void send_exec_msg(char *buffer, int len)
+static void send_exec_msg(char *buf, int len)
 {
-	struct vqsim_exec_msg *execmsg = (void*)buffer;
+	struct vqsim_exec_msg *execmsg = (void*)buf;
 	struct qb_ipc_request_header *qb_header = (void*)execmsg->execmsg;
 
 	engine->exec_engine[qb_header->id & 0xFFFF].exec_handler_fn(execmsg->execmsg, execmsg->header.from_nodeid);
@@ -288,7 +297,7 @@ static void start_qdevice_poll(int longwait)
 			  &qdevice_timer);
 }
 
-static void stop_qdevice_poll()
+static void stop_qdevice_poll(void)
 {
 	qb_loop_timer_del(poll_loop, qdevice_timer);
 	qdevice_timer = 0;
@@ -375,7 +384,7 @@ static void initial_sync(int nodeid)
 	start_sync_timer();
 }
 
-/* Return pipe FDs if sucessful */
+/* Return pipe FDs & child PID if sucessful */
 int fork_new_instance(int nodeid, int *vq_sock, pid_t *childpid)
 {
 	int pipes[2];
