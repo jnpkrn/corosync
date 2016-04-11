@@ -37,13 +37,31 @@ struct vq_node {
 static struct vq_partition partitions[MAX_PARTITIONS];
 static qb_loop_t *poll_loop;
 static int autofence;
+static int check_for_quorum;
 static FILE *output_file;
 
+static struct vq_node *find_by_pid(pid_t pid);
+static void send_partition_to_nodes(struct vq_partition *partition, int newring);
+
+/* Tell all non-quorate nodes to quit */
+static void force_fence()
+{
+	int i;
+	struct vq_node *vqn;
+
+	for (i=0; i<MAX_PARTITIONS; i++) {
+		TAILQ_FOREACH(vqn, &partitions[i].nodelist, entries) {
+			vq_quit_if_inquorate(vqn->instance);
+		}
+	}
+}
+
+/* Quorum message from the subprocesses */
 static void print_qmsg(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
 {
 	int i;
 
-	fprintf(output_file, "%d:%d: q=%d ring=[%d/%lld] ", node->partition->num, qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
+	fprintf(output_file, "%d:%02d: q=%d ring=[%d/%lld] ", node->partition->num, qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
 	fprintf(output_file, "nodes=[");
 	for (i = 0; i<qmsg->view_list_entries; i++) {
 		if (i) {
@@ -52,6 +70,12 @@ static void print_qmsg(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
 		fprintf(output_file, "%d", qmsg->view_list[i]);
 	}
 	fprintf(output_file, "]\n");
+
+	/* If at least one node is quorate and autofence is enabled, then fence everyone who is not quorate */
+	if (check_for_quorum && qmsg->quorate & autofence) {
+		check_for_quorum = 0;
+		force_fence();
+	}
 }
 
 static void propogate_vq_message(struct vq_node *vqn, const char *msg, int len)
@@ -94,6 +118,7 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 			case VQMSG_QUIT:
 			case VQMSG_SYNC:
 			case VQMSG_QDEVICE:
+			case VQMSG_QUORUMQUIT:
 				/* not used here */
 				break;
 			}
@@ -137,20 +162,61 @@ static int read_corosync_conf()
 		return -1;
 	}
 	return 0;
+}
 
+static void remove_node(struct vq_node *node)
+{
+	struct vq_partition *part;
+	part = node->partition;
+
+	/* Remove from partition list */
+	TAILQ_REMOVE(&part->nodelist, node, entries);
+	free(node);
+
+	/* Rebuild quorum */
+	send_partition_to_nodes(part, 1);
 }
 
 static int32_t sigchld_handler(int32_t signal, void *data)
 {
 	pid_t pid;
 	int status;
+	struct vq_node *vqn;
+	char *exit_status;
+	char text[132];
 
 	pid = wait(&status);
 	if (WIFEXITED(status)) {
-		fprintf(stderr, "child %d exited with status %d\n", pid, WEXITSTATUS(status));
+		vqn = find_by_pid(pid);
+		if (vqn) {
+			switch (WEXITSTATUS(status)) {
+			case 0:
+				exit_status = "(on request)";
+				break;
+			case 1:
+				exit_status = "(autofenced)";
+				break;
+			default:
+				sprintf(text, "(exit code %d)", WEXITSTATUS(status));
+				break;
+			}
+			printf("%d:%02d Quit %s\n", vqn->partition->num, vqn->nodeid, exit_status);
+
+			remove_node(vqn);
+		}
+		else {
+			fprintf(stderr, "Unknown child %d exited with status %d\n", pid, WEXITSTATUS(status));
+		}
 	}
 	if (WIFSIGNALED(status)) {
-		fprintf(stderr, "child %d exited with status %d%s\n", pid, WTERMSIG(status), WCOREDUMP(status)?" (core dumped)":"");
+		vqn = find_by_pid(pid);
+		if (vqn) {
+			printf("%d:%02d exited on signal %d%s\n", vqn->partition->num, vqn->nodeid, WTERMSIG(status), WCOREDUMP(status)?" (core dumped)":"");
+			remove_node(vqn);
+		}
+		else {
+			fprintf(stderr, "Unknown child %d exited with status %d%s\n", pid, WTERMSIG(status), WCOREDUMP(status)?" (core dumped)":"");
+		}
 	}
 	return 0;
 }
@@ -267,6 +333,21 @@ static struct vq_node *find_node(int nodeid)
 	return NULL;
 }
 
+static struct vq_node *find_by_pid(pid_t pid)
+{
+	int i;
+	struct vq_node *vqn;
+
+	for (i=0; i<MAX_PARTITIONS; i++) {
+		TAILQ_FOREACH(vqn, &partitions[i].nodelist, entries) {
+			if (vq_get_pid(vqn->instance) == pid) {
+				return vqn;
+			}
+		}
+	}
+	return NULL;
+}
+
 /* Routines called from the parser */
 void cmd_start_new_node(int nodeid, int partition)
 {
@@ -295,7 +376,6 @@ void cmd_stop_all_nodes()
 void cmd_stop_node(int nodeid)
 {
 	struct vq_node *node;
-	struct vq_partition *part;
 
 	node = find_node(nodeid);
 	if (!node) {
@@ -303,17 +383,10 @@ void cmd_stop_node(int nodeid)
 		return;
 	}
 
-	part = node->partition;
-
 	/* Remove processor */
 	vq_quit(node->instance);
 
-	/* Remove from partition list */
-	TAILQ_REMOVE(&part->nodelist, node, entries);
-	free(node);
-
-	/* Rebuild quorum */
-	send_partition_to_nodes(part, 1);
+	/* Node will be removed when the child exits */
 }
 
 /* Move all nodes in 'nodelist' into partition 'partition' */
@@ -365,6 +438,7 @@ void cmd_update_all_partitions(int newring)
 {
 	int i;
 
+	check_for_quorum = 1;
 	for (i=0; i<MAX_PARTITIONS; i++) {
 		send_partition_to_nodes(&partitions[i], newring);
 	}

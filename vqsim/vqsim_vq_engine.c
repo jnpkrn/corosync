@@ -352,6 +352,11 @@ static int parent_pipe_read_fn(int32_t fd, int32_t revents, void *data)
 		case VQMSG_QDEVICE:
 			do_qdevice(header->param);
 			break;
+		case VQMSG_QUORUMQUIT:
+			if (!we_are_quorate) {
+				exit(1);
+			}
+			break;
 		case VQMSG_QUORUM:
 			/* not used here */
 			break;
@@ -377,16 +382,17 @@ static void initial_sync(int nodeid)
 }
 
 /* Return pipe FDs if sucessful */
-int fork_new_instance(int nodeid, int *vq_sock)
+int fork_new_instance(int nodeid, int *vq_sock, pid_t *childpid)
 {
 	int pipes[2];
+	pid_t pid;
 
 	if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0, pipes)) {
 		return -1;
 	}
 	parent_socket = pipes[0];
 
-	switch (fork()) {
+	switch ( (pid=fork()) ) {
 	case -1:
 		perror("fork failed");
 		return -1;
@@ -396,6 +402,7 @@ int fork_new_instance(int nodeid, int *vq_sock)
 	default:
 		/* parent process */
 		*vq_sock = pipes[1];
+		*childpid = pid;
 		return 0;
 	}
 

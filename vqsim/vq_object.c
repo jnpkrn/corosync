@@ -15,6 +15,7 @@ struct vq_instance
 {
 	int nodeid;
 	int vq_socket;
+	pid_t pid;
 };
 
 vq_object_t vq_create_instance(qb_loop_t *poll_loop, int nodeid)
@@ -26,12 +27,18 @@ vq_object_t vq_create_instance(qb_loop_t *poll_loop, int nodeid)
 
 	instance->nodeid = nodeid;
 
-	if (fork_new_instance(nodeid, &instance->vq_socket)) {
+	if (fork_new_instance(nodeid, &instance->vq_socket, &instance->pid)) {
 		free(instance);
 		return NULL;
 	}
 
 	return instance;
+}
+
+pid_t vq_get_pid(vq_object_t instance)
+{
+	struct vq_instance *vqi = instance;
+	return vqi->pid;
 }
 
 void vq_quit(vq_object_t instance)
@@ -41,6 +48,22 @@ void vq_quit(vq_object_t instance)
 	int res;
 
 	msg.type = VQMSG_QUIT;
+	msg.from_nodeid = 0;
+	msg.param = 0;
+
+	res = write(vqi->vq_socket, &msg, sizeof(msg));
+	if (res <= 0) {
+		perror("Quit write failed");
+	}
+}
+
+int vq_quit_if_inquorate(vq_object_t instance)
+{
+	struct vq_instance *vqi = instance;
+	struct vqsim_msg_header msg;
+	int res;
+
+	msg.type = VQMSG_QUORUMQUIT;
 	msg.from_nodeid = 0;
 	msg.param = 0;
 

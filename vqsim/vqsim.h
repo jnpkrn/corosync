@@ -4,6 +4,7 @@ typedef enum {VQMSG_QUIT=1,
 	      VQMSG_QUORUM,  /* quorum state of this 'node' */
 	      VQMSG_EXEC,    /* message for exec_handler */
 	      VQMSG_QDEVICE, /* quorum device enable/disable */
+	      VQMSG_QUORUMQUIT, /* quit if you don't have quorum */
 } vqsim_msg_type_t;
 
 typedef struct vq_instance *vq_object_t;
@@ -55,9 +56,11 @@ void vq_quit(vq_object_t instance);
 int vq_set_nodelist(vq_object_t instance, struct memb_ring_id *ring_id, int *nodeids, int nodeids_entries);
 int vq_get_parent_fd(vq_object_t instance);
 int vq_set_qdevice(vq_object_t instance, struct memb_ring_id *ring_id, int onoff);
+int vq_quit_if_inquorate(vq_object_t instance);
+pid_t vq_get_pid(vq_object_t instance);
 
 /* in vqsim_vq_engine.c - effectively the constructor */
-int fork_new_instance(int nodeid, int *vq_sock);
+int fork_new_instance(int nodeid, int *vq_sock, pid_t *child_pid);
 
 /* In parser.c */
 void parse_input_command(char *cmd);
