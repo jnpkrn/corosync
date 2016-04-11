@@ -42,7 +42,6 @@ static struct memb_ring_id current_ring_id;
 static int qdevice_registered;
 static unsigned int qdevice_timeout = VOTEQUORUM_QDEVICE_DEFAULT_TIMEOUT;
 
-static void start_qdevice_poll(int longwait);
 static void api_error_memory_failure() __attribute__((noreturn));
 static void api_error_memory_failure()
 {
@@ -123,9 +122,9 @@ static struct corosync_api_v1 corosync_api = {
 };
 
 /* -------------------- Above is all for providing the corosync_api support routines --------------------------------------------*/
-// CC: maybe put those in their own file.
-/* ----------------------------------------------------------------------------------------------------------------------------- */
+/* They need to be in the same file as the engine as they use the local 'poll_loop' variable which is per-process */
 
+static void start_qdevice_poll(int longwait);
 static void start_sync_timer(void);
 
 /* Callback from Votequorum to tell us about the quorum state */
@@ -153,7 +152,6 @@ static void quorum_fn(const unsigned int *view_list,
 		perror("write (view list to parent) failed");
 	}
 	memcpy(&current_ring_id, ring_id, sizeof(*ring_id));
-//	fprintf(stderr, "%d: quorum callback %d write returned %d\n", our_nodeid, quorate, len);
 }
 
 char *corosync_service_link_and_init(struct corosync_api_v1 *api,
@@ -202,7 +200,6 @@ static int load_quorum_instance(struct corosync_api_v1 *api)
 static void sync_dispatch_fn(void *data)
 {
 	if (engine->sync_process()) {
-//		fprintf(stderr, "%d: waiting for sync to finish\n", our_nodeid);
 		start_sync_timer();
 	}
 	else {
@@ -237,7 +234,6 @@ static void send_exec_msg(char *buffer, int len)
 	struct vqsim_exec_msg *execmsg = (void*)buffer;
 	struct qb_ipc_request_header *qb_header = (void*)execmsg->execmsg;
 
-//	fprintf(stderr, "%d: EXEC message %d received from %d\n", our_nodeid, qb_header->id & 0xFFFF, execmsg->header.from_nodeid);
 	engine->exec_engine[qb_header->id & 0xFFFF].exec_handler_fn(execmsg->execmsg, execmsg->header.from_nodeid);
 }
 
@@ -248,7 +244,6 @@ static int send_lib_msg(int type, void *msg)
 
 	engine->lib_engine[type].lib_handler_fn(fake_conn, msg);
 
-//	fprintf(stderr, "%d: LIB message error return from %d is %d\n", our_nodeid, type, last_lib_error);
 	return last_lib_error;
 }
 
@@ -338,12 +333,11 @@ static int parent_pipe_read_fn(int32_t fd, int32_t revents, void *data)
 	len = read(fd, buffer, sizeof(buffer));
 	if (len > 0) {
 		/* Check header and route */
-//		fprintf(stderr, "%d: message %d from parent pipe\n", our_nodeid, header->type);
 		switch (header->type) {
 		case VQMSG_QUIT:
 			exit(0);
 			break;
-		case VQMSG_EXEC: // For votequorum exec
+		case VQMSG_EXEC: /* For votequorum exec messages */
 			send_exec_msg(buffer, len);
 			break;
 		case VQMSG_SYNC:

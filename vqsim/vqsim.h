@@ -74,3 +74,4 @@ void cmd_move_nodes(int partition, int num_nodes, int *nodelist);
 void cmd_join_partitions(int part1, int part2);
 void cmd_update_all_partitions(int newring);
 void cmd_qdevice_poll(int nodeid, int onoff);
+void cmd_show_node_states(void);

@@ -71,6 +71,7 @@ int vq_quit_if_inquorate(vq_object_t instance)
 	if (res <= 0) {
 		perror("Quit write failed");
 	}
+	return 0;
 }
 
 int vq_set_nodelist(vq_object_t instance, struct memb_ring_id *ring_id, int *nodeids, int nodeids_entries)
@@ -80,7 +81,6 @@ int vq_set_nodelist(vq_object_t instance, struct memb_ring_id *ring_id, int *nod
 	struct vqsim_sync_msg *msg = (void*)msgbuf;
 	int res;
 
-//	fprintf(stderr, "vq_set_nodelist: %d nodes (ring_id.seq=%d)\n", nodeids_entries, ring_id->seq);
 	msg->header.type = VQMSG_SYNC;
 	msg->header.from_nodeid = 0;
 	msg->header.param = 0;

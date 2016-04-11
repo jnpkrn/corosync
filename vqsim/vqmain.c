@@ -32,6 +32,12 @@ struct vq_node {
 	int fd;
 	struct vq_partition *partition;
 	TAILQ_ENTRY(vq_node) entries;
+
+	/* Last status */
+	int last_quorate;
+	struct memb_ring_id last_ring_id;
+	int last_view_list[MAX_NODES];
+	int last_view_list_entries;
 };
 
 static struct vq_partition partitions[MAX_PARTITIONS];
@@ -56,20 +62,13 @@ static void force_fence()
 	}
 }
 
-/* Quorum message from the subprocesses */
-static void print_qmsg(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
+/* Save quorum state from the incoming message */
+static void save_quorum_state(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
 {
-	int i;
-
-	fprintf(output_file, "%d:%02d: q=%d ring=[%d/%lld] ", node->partition->num, qmsg->header.from_nodeid, qmsg->quorate, qmsg->ring_id.rep.nodeid, qmsg->ring_id.seq);
-	fprintf(output_file, "nodes=[");
-	for (i = 0; i<qmsg->view_list_entries; i++) {
-		if (i) {
-			fprintf(output_file, " ");
-		}
-		fprintf(output_file, "%d", qmsg->view_list[i]);
-	}
-	fprintf(output_file, "]\n");
+	node->last_quorate = qmsg->quorate;
+	memcpy(&node->last_ring_id, &qmsg->ring_id, sizeof(struct memb_ring_id));
+	memcpy(node->last_view_list, qmsg->view_list, sizeof(int) * qmsg->view_list_entries);
+	node->last_view_list_entries = qmsg->view_list_entries;
 
 	/* If at least one node is quorate and autofence is enabled, then fence everyone who is not quorate */
 	if (check_for_quorum && qmsg->quorate & autofence) {
@@ -78,12 +77,29 @@ static void print_qmsg(struct vq_node *node, struct vqsim_quorum_msg *qmsg)
 	}
 }
 
+/* Print current node state */
+static void print_quorum_state(struct vq_node *node)
+{
+	int i;
+
+	fprintf(output_file, "%d:%02d: q=%d ring=[%d/%lld] ", node->partition->num, node->nodeid, node->last_quorate,
+		node->last_ring_id.rep.nodeid, node->last_ring_id.seq);
+	fprintf(output_file, "nodes=[");
+	for (i = 0; i < node->last_view_list_entries; i++) {
+		if (i) {
+			fprintf(output_file, " ");
+		}
+		fprintf(output_file, "%d", node->last_view_list[i]);
+	}
+	fprintf(output_file, "]\n");
+
+}
+
 static void propogate_vq_message(struct vq_node *vqn, const char *msg, int len)
 {
 	struct vq_node *other_vqn;
 
 	/* Send it to everyone in that node's partition (including itself) */
-	// TODO: ordering?
 	TAILQ_FOREACH(other_vqn, &vqn->partition->nodelist, entries) {
 		write(other_vqn->fd, msg, len);
 	}
@@ -99,7 +115,6 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 
 	if (revents == POLLIN) {
 		msglen = read(fd, msgbuf, sizeof(msgbuf));
-//		fprintf(stderr, "c: message received from child %d (len=%d)\n", vqn->nodeid, msglen);
 		if (msglen < 0) {
 			perror("read failed");
 		}
@@ -109,7 +124,8 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 			switch (msg->type) {
 			case VQMSG_QUORUM:
 				qmsg = (void*)msgbuf;
-				print_qmsg(vqn, qmsg);
+				save_quorum_state(vqn, qmsg);
+				print_quorum_state(vqn);
 				break;
 			case VQMSG_EXEC:
 				/* Message from votequorum, pass around the partition */
@@ -373,6 +389,18 @@ void cmd_stop_all_nodes()
 	}
 }
 
+void cmd_show_node_states()
+{
+	int i;
+	struct vq_node *vqn;
+
+	for (i=0; i<MAX_PARTITIONS; i++) {
+		TAILQ_FOREACH(vqn, &partitions[i].nodelist, entries) {
+			print_quorum_state(vqn);
+		}
+	}
+}
+
 void cmd_stop_node(int nodeid)
 {
 	struct vq_node *node;
@@ -386,7 +414,7 @@ void cmd_stop_node(int nodeid)
 	/* Remove processor */
 	vq_quit(node->instance);
 
-	/* Node will be removed when the child exits */
+	/* Node will be removed when the child process exits */
 }
 
 /* Move all nodes in 'nodelist' into partition 'partition' */
@@ -489,6 +517,7 @@ static void usage(char *program)
 	printf("    -f     config file. defaults to /etc/corosync/corosync.conf\n");
 	printf("    -o     output file. defaults to stdout\n");
 	printf("    -h     display this help text\n");
+	printf("\n");
 }
 
 int main(int argc, char **argv)
@@ -537,7 +566,7 @@ int main(int argc, char **argv)
 
 	poll_loop = qb_loop_create();
 
-	/* SIGCHLD handler to reap sub-processes */
+	/* SIGCHLD handler to reap sub-processes and reconfigure the cluster */
 	qb_loop_signal_add(poll_loop,
 			   QB_LOOP_MED,
 			   SIGCHLD,
