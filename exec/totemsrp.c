@@ -707,7 +707,7 @@ do {												\
 
 static const char* gsfrom_to_msg(enum gather_state_from gsfrom)
 {
-	if (0 <= gsfrom && gsfrom <= TOTEMSRP_GSFROM_MAX) {
+	if (gsfrom <= TOTEMSRP_GSFROM_MAX) {
 		return gather_state_from_desc[gsfrom];
 	}
 	else {
@@ -4223,7 +4223,7 @@ static void memb_join_process (
 		} else {
 			if (memb_join->header.nodeid == LEAVE_DUMMY_NODEID) {
 				log_printf (instance->totemsrp_log_level_debug,
-		    		"Recieve LEAVE message from %u", memb_join->failed_list_entries > 0 ? failed_list[memb_join->failed_list_entries - 1 ].addr[0].nodeid : LEAVE_DUMMY_NODEID);
+				    "Received LEAVE message from %u", memb_join->failed_list_entries > 0 ? failed_list[memb_join->failed_list_entries - 1 ].addr[0].nodeid : LEAVE_DUMMY_NODEID);
 				if (memb_join->failed_list_entries > 0) {
 					my_leave_memb_set(instance, failed_list[memb_join->failed_list_entries - 1 ].addr[0].nodeid);
 				}

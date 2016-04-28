@@ -6,11 +6,11 @@ AC_PREREQ([2.61])
 
 AC_INIT([corosync],
 	m4_esyscmd([build-aux/git-version-gen .tarball-version]),
-	[discuss@lists.corosync.org])
+	[users@clusterlabs.org])
 
 AC_USE_SYSTEM_EXTENSIONS
 
-AM_INIT_AUTOMAKE([-Wno-portability 1.11])
+AM_INIT_AUTOMAKE([foreign 1.11])
 
 LT_PREREQ([2.2.6])
 LT_INIT
@@ -78,16 +78,13 @@ if ! ${MAKE-make} --version /cannot/make/this >/dev/null 2>&1; then
 	AC_MSG_ERROR([you don't seem to have GNU make; it is required])
 fi
 
-sinclude(coroysync-default.m4)
+sinclude(corosync-default.m4)
 
 AC_PROG_CC
-AC_PROG_CXX
 AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
-AC_PROG_RANLIB
 AC_PROG_SED
-AC_PROG_LIBTOOL
 
 AC_CHECK_PROGS([GROFF], [groff])
 AC_CHECK_PROGS([PKGCONFIG], [pkg-config])
@@ -148,17 +145,22 @@ AC_TYPE_UINT64_T
 AC_TYPE_UINT8_T
 AC_TYPE_SIZE_T
 AC_TYPE_SSIZE_T
-AC_TYPE_SIGNAL
 
 # Checks for libraries.
 PKG_CHECK_MODULES([nss],[nss])
+SAVE_CPPFLAGS="$CPPFLAGS"
+SAVE_LIBS="$LIBS"
 PKG_CHECK_MODULES([LIBQB], [libqb])
+CPPFLAGS="$CPPFLAGS $LIBQB_CFLAGS"
+LIBS="$LIBS $LIBQB_LIBS"
 AC_CHECK_LIB([qb], [qb_log_thread_priority_set], \
 	     have_qb_log_thread_priority_set="yes", \
 	     have_qb_log_thread_priority_set="no")
 if test "x${have_qb_log_thread_priority_set}" = xyes; then
 	AC_DEFINE_UNQUOTED([HAVE_QB_LOG_THREAD_PRIORITY_SET], 1, [have qb_log_thread_priority_set])
 fi
+CPPFLAGS="$SAVE_CPPFLAGS"
+LIBS="$SAVE_LIBS"
 AC_CHECK_LIB([pthread], [pthread_create])
 AC_CHECK_LIB([socket], [socket])
 AC_CHECK_LIB([nsl], [t_open])
@@ -179,10 +181,10 @@ AC_FUNC_REALLOC
 AC_FUNC_SELECT_ARGTYPES
 AC_FUNC_VPRINTF
 
-AC_CHECK_FUNCS([alarm alphasort atexit bzero dup2 endgrent endpwent fcntl \
-		getcwd getpeerucred getpeereid gettimeofday inet_ntoa memmove \
-		memset mkdir scandir select socket strcasecmp strchr strdup \
-		strerror strrchr strspn strstr pthread_setschedparam \
+AC_CHECK_FUNCS([alarm alphasort atexit bzero dup2 endgrent endpwent fdatasync \
+		fcntl getcwd getpeerucred getpeereid gettimeofday inet_ntoa \
+		memmove memset mkdir scandir select socket strcasecmp strchr \
+		strdup strerror strrchr strspn strstr pthread_setschedparam \
 		sched_get_priority_max sched_setscheduler getifaddrs \
 		clock_gettime ftruncate gethostname localtime_r munmap strtol])
 
@@ -240,10 +242,19 @@ LIB_MSG_RESULT(m4_shift(m4_shift($@)))dnl
 # Helpers
 # ===============================================
 
+## check if the compiler supports -Werror -Wunknown-warning-option
+AC_MSG_CHECKING([whether $CC supports -Wunknown-warning-option -Werror])
+BACKUP="$CPPFLAGS"
+CPPFLAGS="$CPPFLAGS -Werror -Wunknown-warning-option"
+AC_PREPROC_IFELSE([AC_LANG_PROGRAM([])],
+		  [unknown_warnings_as_errors='-Wunknown-warning-option -Werror'; AC_MSG_RESULT([yes])],
+		  [unknown_warnings_as_errors=''; AC_MSG_RESULT([no])])
+CPPFLAGS="$BACKUP"
+
 ## helper for CC stuff
 cc_supports_flag() {
 	BACKUP="$CPPFLAGS"
-	CPPFLAGS="$CPPFLAGS $@"
+	CPPFLAGS="$CPPFLAGS $@ $unknown_warnings_as_errors"
 	AC_MSG_CHECKING([whether $CC supports "$@"])
 	AC_PREPROC_IFELSE([AC_LANG_PROGRAM([])],
 			  [RC=0; AC_MSG_RESULT([yes])],
@@ -374,12 +385,12 @@ AC_ARG_WITH([initwrappersdir],
 	[ INITWRAPPERSDIR="$datarootdir/corosync" ])
 
 AC_ARG_WITH([logdir],
-	[  --logdir=DIR   : the base directory for corosync logging files. ],
+	[  --with-logdir=DIR       : the base directory for corosync logging files. ],
 	[ LOGDIR="$withval" ],
 	[ LOGDIR="$localstatedir/log/cluster" ])
 
 AC_ARG_WITH([logrotatedir],
-	[  --logrotatedir=DIR   : the base directory for logrorate.d files.  ],
+	[  --with-logrotatedir=DIR : the base directory for logrorate.d files.  ],
 	[ LOGROTATEDIR="$withval" ],
 	[ LOGROTATEDIR="$sysconfdir/logrotate.d" ])
 

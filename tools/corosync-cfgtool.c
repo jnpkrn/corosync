@@ -88,7 +88,7 @@ static int ringstatusget_do (char *interface_name)
 		printf ("Could not get the local node id, the error is: %d\n", result);
 	}
 	else {
-		printf ("Local node ID %d\n", nodeid);
+		printf ("Local node ID %u\n", nodeid);
 	}
 
 	result = corosync_cfg_ring_status_get (handle,
@@ -131,7 +131,7 @@ static void ringreenable_do (void)
 
 	result = corosync_cfg_ring_reenable (handle);
 	if (result != CS_OK) {
-		printf ("Could not reenable ring error %d\n", result);
+		printf ("Could not re-enable ring error %d\n", result);
 	}
 
 	(void)corosync_cfg_finalize (handle);
