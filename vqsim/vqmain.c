@@ -401,6 +401,7 @@ void cmd_show_node_states()
 			print_quorum_state(vqn);
 		}
 	}
+	fprintf(output_file, "#autofence: %s\n", autofence?"on":"off");
 }
 
 void cmd_stop_node(int nodeid)
@@ -462,6 +463,7 @@ retry:
 void cmd_set_autofence(int onoff)
 {
 	autofence = onoff;
+	fprintf(output_file, "#autofence: %s\n", onoff?"on":"off");
 }
 
 void cmd_update_all_partitions(int newring)
