@@ -159,6 +159,7 @@ static int read_corosync_conf(void)
 	}
 
 	/* Load corosync.conf */
+	logsys_format_set(NULL);
 	res = coroparse_configparse(icmap_get_global_map(), &error_string);
 	if (res == -1) {
 		log_printf (LOGSYS_LEVEL_INFO, "Error loading corosyc.conf %s", error_string);
