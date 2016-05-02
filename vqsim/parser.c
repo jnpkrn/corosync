@@ -16,16 +16,16 @@ static void do_usage(void)
 {
 	printf("  All node IDs in the cluster are unique and belong to a numbered 'partition' (default=0)\n");
 	printf("\n");
-	printf("up         [<partition>:][<nodeid>[,nodeid] ...] [[<partition>:][<nodeid>...]] [...]\n");
+	printf("up         [<partition>:][<nodeid>[,<nodeid>] ...] [[<partition>:][<nodeid>...]] [...]\n");
 	printf("           bring node(s) online in the specified partition(s)\n");
 	printf("down       <nodeid>,[<nodeid>...]\n");
 	printf("           send nodes offline (shut them down)\n");
-	printf("move/split [<partition>:][<nodeid>[,nodeid] ...] [[<partition>:][<nodeid>...]] [...]\n");
+	printf("move/split [<partition>:][<nodeid>[,<nodeid>] ...] [[<partition>:][<nodeid>...]] [...]\n");
 	printf("           Move nodes from one partition to another (netsplit)\n");
 	printf("           <partition> here is the partition to move the nodes to\n");
 	printf("join       <partition> <partition> [<partition>] ... \n");
-	printf("           Join partitions together (reverse of a netsplit\n");
-	printf("qdevice    on|off [<partition>:][<nodeid>[,nodeid] ...] [[<partition>:][<nodeid>...]] [...]\n");
+	printf("           Join partitions together (reverse of a netsplit)\n");
+	printf("qdevice    on|off [<partition>:][<nodeid>[,<nodeid>] ...] [[<partition>:][<nodeid>...]] [...]\n");
 	printf("           Enable quorum device in specified nodes\n");
 	printf("autofence  on|off\n");
 	printf("           automatically 'down' nodes on inquorate side on netsplit\n");
