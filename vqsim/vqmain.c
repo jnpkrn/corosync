@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <sys/types.h>
 #include <wait.h>
 #include <qb/qblog.h>
@@ -5,7 +6,9 @@
 #include <sys/poll.h>
 #include <netinet/in.h>
 #include <sys/queue.h>
+#ifdef HAVE_readline_readline_h
 #include <readline/readline.h>
+#endif
 
 #include "../exec/votequorum.h"
 #include "../exec/service.h"
@@ -49,6 +52,12 @@ static FILE *output_file;
 
 static struct vq_node *find_by_pid(pid_t pid);
 static void send_partition_to_nodes(struct vq_partition *partition, int newring);
+
+#ifndef HAVE_readline_readline_h
+#define INPUT_BUF_SIZE 1024
+static char input_buf[INPUT_BUF_SIZE];
+static size_t input_buf_term = 0;
+#endif
 
 /* Tell all non-quorate nodes to quit */
 static void force_fence(void)
@@ -488,18 +497,58 @@ void cmd_qdevice_poll(int nodeid, int onoff)
 
 /* ---------------------------------- */
 
+#ifndef HAVE_readline_readline_h
+static void dummy_read_char(void);
+
+static void dummy_read_char()
+{
+	int c, flush = 0;
+
+	while (!flush) {
+		c = getchar();
+		if (++input_buf_term >= INPUT_BUF_SIZE) {
+			if (c != '\n' && c != EOF)
+				fprintf(stderr, "User input overflows the limit: %zu\n",
+						(size_t) INPUT_BUF_SIZE);
+			input_buf[INPUT_BUF_SIZE - 1] = '\0';
+			flush = 1;
+		} else if (c == '\n' || c == EOF) {
+			input_buf[input_buf_term - 1] = '\0';
+			flush = 1;
+		} else {
+			input_buf[input_buf_term - 1] = c;
+		}
+	}
+
+	parse_input_command((c == EOF) ? NULL : input_buf);
+	input_buf_term = 0;
+
+	printf("vqsim> ");
+	fflush(stdout);
+}
+#endif
+
 static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 {
+#ifdef HAVE_readline_readline_h
 	/* Send it to readline */
 	rl_callback_read_char();
+#else
+	dummy_read_char();
+#endif
 	return 0;
 }
 
 static void start_kb_input(void)
 {
 
+#ifdef HAVE_readline_readline_h
 	/* Readline will deal with completed lines when they arrive */
 	rl_callback_handler_install("vqsim> ", parse_input_command);
+#else
+	printf("vqsim> ");
+	fflush(stdout);
+#endif
 
 	/* Send stdin to readline */
 	if (qb_loop_poll_add(poll_loop,

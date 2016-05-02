@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netinet/in.h>
+#ifdef HAVE_readline_history_h
 #include <readline/history.h>
+#endif
 
 #include <corosync/coroapi.h>
 #include "vqsim.h"
@@ -179,7 +181,9 @@ void parse_input_command(char *rl_cmd)
 		free(cmd);
 	    return;
 	}
+#ifdef HAVE_readline_history_h
 	add_history(rl_cmd);
+#endif
 
 	/* Dispatch command */
 	for (i=0; i<num_cmds; i++) {

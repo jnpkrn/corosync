@@ -37,7 +37,10 @@ noinst_PROGRAMS		= vqsim
 vqsim_LDADD		= $(top_builddir)/common_lib/libcorosync_common.la \
 			  ../exec/corosync-votequorum.o ../exec/corosync-icmap.o ../exec/corosync-logsys.o \
 			  ../exec/corosync-coroparse.o ../exec/corosync-logconfig.o \
-			  $(LIBQB_LIBS) -lreadline
+			  $(LIBQB_LIBS)
+if VQSIM_READLINE
+vqsim_LDADD		+= -lreadline
+endif
 
 vqsim_DEPENDENCIES	= $(top_builddir)/common_lib/libcorosync_common.la
 
