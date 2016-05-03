@@ -494,8 +494,13 @@ if test "x${enable_qdevices}" = xyes; then
 	PACKAGE_FEATURES="$PACKAGE_FEATURES qdevices"
 fi
 if test "x${enable_vqsim}" = xyes; then
+	vqsim_readline=no
+	AC_CHECK_HEADERS([readline/readline.h readline/history.h],
+			 [],
+                         AC_MSG_WARN([vqsim will lack readline support]))
 	PACKAGE_FEATURES="$PACKAGE_FEATURES vqsim"
 fi
+AM_CONDITIONAL(VQSIM_READLINE, [test "x${ac_cv_header_readline_readline_h}" = xyes])
 
 do_snmp=0
 if test "x${enable_snmp}" = xyes; then
