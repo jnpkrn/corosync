@@ -51,9 +51,15 @@ static qb_loop_t *poll_loop;
 static int autofence;
 static int check_for_quorum;
 static FILE *output_file;
+static int nosync;
+static qb_loop_timer_handle kb_timer;
+static ssize_t wait_count;
+static ssize_t wait_count_to_unblock;
 
 static struct vq_node *find_by_pid(pid_t pid);
 static void send_partition_to_nodes(struct vq_partition *partition, int newring);
+static void start_kb_input(void);
+static void start_kb_input_timeout(void *data);
 
 #ifndef HAVE_readline_readline_h
 #define INPUT_BUF_SIZE 1024
@@ -142,9 +148,13 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 			msg = (void*)msgbuf;
 			switch (msg->type) {
 			case VQMSG_QUORUM:
+				if (!nosync && --wait_count_to_unblock <= 0)
+					qb_loop_timer_del(poll_loop, kb_timer);
 				qmsg = (void*)msgbuf;
 				save_quorum_state(vqn, qmsg);
 				print_quorum_state(vqn);
+				if (!nosync && wait_count_to_unblock <= 0)
+					start_kb_input();
 				break;
 			case VQMSG_EXEC:
 				/* Message from votequorum, pass around the partition */
@@ -208,6 +218,8 @@ static void remove_node(struct vq_node *node)
 	/* Remove from partition list */
 	TAILQ_REMOVE(&part->nodelist, node, entries);
 	free(node);
+
+	wait_count--;
 
 	/* Rebuild quorum */
 	send_partition_to_nodes(part, 1);
@@ -301,6 +313,14 @@ static pid_t create_node(int nodeid, int partno)
 
 	newvq = malloc(sizeof(struct vq_node));
 	if (newvq) {
+		if (!nosync) {
+			/* Number of expected "quorum" vq messages is a square
+			   of the total nodes count, so increment the node
+			   counter and set new square of this value as
+			   a "to observe" counter */
+			wait_count++;
+			wait_count_to_unblock = wait_count * wait_count;
+		}
 		newvq->last_quorate = -1;  /* mark "uninitialized" */
 		newvq->instance = vq_create_instance(poll_loop, nodeid);
 		if (!newvq->instance) {
@@ -413,7 +433,20 @@ void cmd_start_new_node(int nodeid, int partition)
 		fprintf(stderr, "ERR: nodeid %d already exists in partition %d\n", nodeid, node->partition->num);
 		return;
 	}
+	qb_loop_poll_del(poll_loop, STDIN_FILENO);
 	create_node(nodeid, partition);
+	if (!nosync) {
+		/* Delay kb input handling by 0.25 second when we've just
+		   added a node; expect that the delay will be cancelled
+		   substantially earlier once it has reported its quorum info
+		   (the delay is in fact a failsafe input enabler here) */
+		qb_loop_timer_add(poll_loop,
+				  QB_LOOP_MED,
+				  250000000,
+				  NULL,
+				  start_kb_input_timeout,
+				  &kb_timer);
+	}
 }
 
 void cmd_stop_all_nodes()
@@ -571,6 +604,7 @@ static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 
 static void start_kb_input(void)
 {
+	wait_count_to_unblock = 0;
 
 #ifdef HAVE_readline_readline_h
 	/* Readline will deal with completed lines when they arrive */
@@ -589,8 +623,14 @@ static void start_kb_input(void)
 			     POLLIN | POLLERR,
 			     NULL,
 			     stdin_read_fn)) {
-		perror("qb_loop_poll_add returned error");
+		perror("qb_loop_poll_add1 returned error");
 	}
+}
+
+static void start_kb_input_timeout(void *data)
+{
+	fprintf(stderr, "Waiting for nodes to report status timed out\n");
+	start_kb_input();
 }
 
 static void usage(char *program)
@@ -601,6 +641,7 @@ static void usage(char *program)
 	printf("\n");
 	printf("    -f     config file. defaults to /etc/corosync/corosync.conf\n");
 	printf("    -o     output file. defaults to stdout\n");
+	printf("    -n     no synchronization (on adding a node)\n");
 	printf("    -h     display this help text\n");
 	printf("\n");
 }
@@ -613,13 +654,16 @@ int main(int argc, char **argv)
 	char *output_file_name = NULL;
 	char envstring[PATH_MAX];
 
-	while ((ch = getopt (argc, argv, "f:o:h")) != EOF) {
+	while ((ch = getopt (argc, argv, "f:o:nh")) != EOF) {
 		switch (ch) {
 		case 'f':
 			config_file_name = optarg;
 			break;
 		case 'o':
 			output_file_name = optarg;
+			break;
+		case 'n':
+			nosync = 1;
 			break;
 		default:
 			usage(argv[0]);
@@ -664,9 +708,21 @@ int main(int argc, char **argv)
 
 	/* Create a full cluster of nodes from corosync.conf */
 	read_corosync_conf();
-	create_nodes_from_config();
-
-	start_kb_input();
+	if (create_nodes_from_config() && !nosync) {
+		/* Delay kb input handling by 1 second when we've just
+		   added the nodes from corosync.conf; expect that
+		   the delay will be cancelled substantially earlier
+		   once they all have reported their quorum info
+		   (the delay is in fact a failsafe input enabler here) */
+		qb_loop_timer_add(poll_loop,
+				  QB_LOOP_MED,
+				  1000000000,
+				  NULL,
+				  start_kb_input_timeout,
+				  &kb_timer);
+	} else {
+		start_kb_input();
+	}
 
 	qb_loop_run(poll_loop);
 	return 0;
