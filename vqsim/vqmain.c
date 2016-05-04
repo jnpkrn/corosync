@@ -331,7 +331,7 @@ static pid_t create_node(int nodeid, int partno)
 	return (pid_t) -1;
 }
 
-static void create_nodes_from_config(void)
+static size_t create_nodes_from_config(void)
 {
 	icmap_iter_t iter;
 	char tmp_key[ICMAP_KEYNAME_MAXLEN];
@@ -340,6 +340,7 @@ static void create_nodes_from_config(void)
 	const char *iter_key;
 	int res;
 	pid_t pid;
+	size_t ret = 0;
 
 	init_partitions();
 
@@ -363,10 +364,13 @@ static void create_nodes_from_config(void)
 					nodeid);
 				exit(1);
 			}
+			ret++;
 		}
 
 	}
 	icmap_iter_finalize(iter);
+
+	return ret;
 }
 
 static struct vq_node *find_node(int nodeid)
