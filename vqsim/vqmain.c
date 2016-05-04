@@ -8,6 +8,8 @@
 #include <sys/queue.h>
 #ifdef HAVE_readline_readline_h
 #include <readline/readline.h>
+#else
+#include <unistd.h>  /* isatty */
 #endif
 
 #include "../exec/votequorum.h"
@@ -57,6 +59,7 @@ static void send_partition_to_nodes(struct vq_partition *partition, int newring)
 #define INPUT_BUF_SIZE 1024
 static char input_buf[INPUT_BUF_SIZE];
 static size_t input_buf_term = 0;
+static int is_tty;
 #endif
 
 /* Tell all non-quorate nodes to quit */
@@ -523,8 +526,10 @@ static void dummy_read_char()
 	parse_input_command((c == EOF) ? NULL : input_buf);
 	input_buf_term = 0;
 
-	printf("vqsim> ");
-	fflush(stdout);
+	if (is_tty) {
+		printf("vqsim> ");
+		fflush(stdout);
+	}
 }
 #endif
 
@@ -546,8 +551,10 @@ static void start_kb_input(void)
 	/* Readline will deal with completed lines when they arrive */
 	rl_callback_handler_install("vqsim> ", parse_input_command);
 #else
-	printf("vqsim> ");
-	fflush(stdout);
+	if (is_tty) {
+		printf("vqsim> ");
+		fflush(stdout);
+	}
 #endif
 
 	/* Send stdin to readline */
@@ -609,6 +616,9 @@ int main(int argc, char **argv)
 	else {
 		output_file = stdout;
 	}
+#ifndef HAVE_readline_readline_h
+	is_tty = isatty(STDIN_FILENO);
+#endif
 
 	qb_log_filter_ctl(QB_LOG_SYSLOG, QB_LOG_FILTER_ADD,
 			  QB_LOG_FILTER_FUNCTION, "*", LOG_DEBUG);
