@@ -95,6 +95,12 @@ static void print_quorum_state(struct vq_node *node)
 {
 	int i;
 
+	if (node->last_quorate < 0) {
+		fprintf(output_file, "%d:%02d: q=UNINITIALIZED\n",
+			node->partition->num, node->nodeid);
+		return;
+	}
+
 	fprintf(output_file, "%d:%02d: q=%d ring=[%d/%lld] ", node->partition->num, node->nodeid, node->last_quorate,
 		node->last_ring_id.rep.nodeid, node->last_ring_id.seq);
 	fprintf(output_file, "nodes=[");
@@ -295,6 +301,7 @@ static int create_node(int nodeid, int partno)
 
 	newvq = malloc(sizeof(struct vq_node));
 	if (newvq) {
+		newvq->last_quorate = -1;  /* mark "uninitialized" */
 		newvq->instance = vq_create_instance(poll_loop, nodeid);
 		newvq->partition = &partitions[partno];
 		newvq->nodeid = nodeid;
