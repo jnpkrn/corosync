@@ -295,7 +295,7 @@ static void init_partitions(void)
 	}
 }
 
-static int create_node(int nodeid, int partno)
+static pid_t create_node(int nodeid, int partno)
 {
 	struct vq_node *newvq;
 
@@ -303,6 +303,12 @@ static int create_node(int nodeid, int partno)
 	if (newvq) {
 		newvq->last_quorate = -1;  /* mark "uninitialized" */
 		newvq->instance = vq_create_instance(poll_loop, nodeid);
+		if (!newvq->instance) {
+			fprintf(stderr,
+			        "ERR: could not create vq instance nodeid %d\n",
+				nodeid);
+			return (pid_t) -1;
+		}
 		newvq->partition = &partitions[partno];
 		newvq->nodeid = nodeid;
 		newvq->fd = vq_get_parent_fd(newvq->instance);
@@ -315,13 +321,14 @@ static int create_node(int nodeid, int partno)
 				     newvq,
 				     vq_parent_read_fn)) {
 			perror("qb_loop_poll_add returned error");
-			return -1;
+			return (pid_t) -1;
 		}
 
 		/* Send sync with all the nodes so far in it. */
 		send_partition_to_nodes(&partitions[partno], 1);
+		return vq_get_pid(newvq->instance);
 	}
-	return 0;
+	return (pid_t) -1;
 }
 
 static void create_nodes_from_config(void)
@@ -332,6 +339,7 @@ static void create_nodes_from_config(void)
 	uint32_t nodeid;
 	const char *iter_key;
 	int res;
+	pid_t pid;
 
 	init_partitions();
 
@@ -348,7 +356,13 @@ static void create_nodes_from_config(void)
 
 		snprintf(tmp_key, ICMAP_KEYNAME_MAXLEN, "nodelist.node.%u.nodeid", node_pos);
 		if (icmap_get_uint32(tmp_key, &nodeid) == CS_OK) {
-			create_node(nodeid, 0);
+			pid = create_node(nodeid, 0);
+			if (pid == (pid_t) -1) {
+				fprintf(stderr,
+					"ERR: nodeid %d could not be spawned\n",
+					nodeid);
+				exit(1);
+			}
 		}
 
 	}
