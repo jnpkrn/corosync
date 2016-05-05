@@ -8,6 +8,8 @@
 #include <sys/queue.h>
 #ifdef HAVE_readline_readline_h
 #include <readline/readline.h>
+#else
+#include <unistd.h>  /* isatty */
 #endif
 
 #include "../exec/votequorum.h"
@@ -49,14 +51,21 @@ static qb_loop_t *poll_loop;
 static int autofence;
 static int check_for_quorum;
 static FILE *output_file;
+static int nosync;
+static qb_loop_timer_handle kb_timer;
+static ssize_t wait_count;
+static ssize_t wait_count_to_unblock;
 
 static struct vq_node *find_by_pid(pid_t pid);
 static void send_partition_to_nodes(struct vq_partition *partition, int newring);
+static void start_kb_input(void);
+static void start_kb_input_timeout(void *data);
 
 #ifndef HAVE_readline_readline_h
 #define INPUT_BUF_SIZE 1024
 static char input_buf[INPUT_BUF_SIZE];
 static size_t input_buf_term = 0;
+static int is_tty;
 #endif
 
 /* Tell all non-quorate nodes to quit */
@@ -91,6 +100,12 @@ static void save_quorum_state(struct vq_node *node, struct vqsim_quorum_msg *qms
 static void print_quorum_state(struct vq_node *node)
 {
 	int i;
+
+	if (node->last_quorate < 0) {
+		fprintf(output_file, "%d:%02d: q=UNINITIALIZED\n",
+			node->partition->num, node->nodeid);
+		return;
+	}
 
 	fprintf(output_file, "%d:%02d: q=%d ring=[%d/%lld] ", node->partition->num, node->nodeid, node->last_quorate,
 		node->last_ring_id.rep.nodeid, node->last_ring_id.seq);
@@ -133,9 +148,13 @@ static int vq_parent_read_fn(int32_t fd, int32_t revents, void *data)
 			msg = (void*)msgbuf;
 			switch (msg->type) {
 			case VQMSG_QUORUM:
+				if (!nosync && --wait_count_to_unblock <= 0)
+					qb_loop_timer_del(poll_loop, kb_timer);
 				qmsg = (void*)msgbuf;
 				save_quorum_state(vqn, qmsg);
 				print_quorum_state(vqn);
+				if (!nosync && wait_count_to_unblock <= 0)
+					start_kb_input();
 				break;
 			case VQMSG_EXEC:
 				/* Message from votequorum, pass around the partition */
@@ -199,6 +218,8 @@ static void remove_node(struct vq_node *node)
 	/* Remove from partition list */
 	TAILQ_REMOVE(&part->nodelist, node, entries);
 	free(node);
+
+	wait_count--;
 
 	/* Rebuild quorum */
 	send_partition_to_nodes(part, 1);
@@ -286,13 +307,28 @@ static void init_partitions(void)
 	}
 }
 
-static int create_node(int nodeid, int partno)
+static pid_t create_node(int nodeid, int partno)
 {
 	struct vq_node *newvq;
 
 	newvq = malloc(sizeof(struct vq_node));
 	if (newvq) {
+		if (!nosync) {
+			/* Number of expected "quorum" vq messages is a square
+			   of the total nodes count, so increment the node
+			   counter and set new square of this value as
+			   a "to observe" counter */
+			wait_count++;
+			wait_count_to_unblock = wait_count * wait_count;
+		}
+		newvq->last_quorate = -1;  /* mark "uninitialized" */
 		newvq->instance = vq_create_instance(poll_loop, nodeid);
+		if (!newvq->instance) {
+			fprintf(stderr,
+			        "ERR: could not create vq instance nodeid %d\n",
+				nodeid);
+			return (pid_t) -1;
+		}
 		newvq->partition = &partitions[partno];
 		newvq->nodeid = nodeid;
 		newvq->fd = vq_get_parent_fd(newvq->instance);
@@ -305,16 +341,17 @@ static int create_node(int nodeid, int partno)
 				     newvq,
 				     vq_parent_read_fn)) {
 			perror("qb_loop_poll_add returned error");
-			return -1;
+			return (pid_t) -1;
 		}
 
 		/* Send sync with all the nodes so far in it. */
 		send_partition_to_nodes(&partitions[partno], 1);
+		return vq_get_pid(newvq->instance);
 	}
-	return 0;
+	return (pid_t) -1;
 }
 
-static void create_nodes_from_config(void)
+static size_t create_nodes_from_config(void)
 {
 	icmap_iter_t iter;
 	char tmp_key[ICMAP_KEYNAME_MAXLEN];
@@ -322,6 +359,8 @@ static void create_nodes_from_config(void)
 	uint32_t nodeid;
 	const char *iter_key;
 	int res;
+	pid_t pid;
+	size_t ret = 0;
 
 	init_partitions();
 
@@ -338,11 +377,20 @@ static void create_nodes_from_config(void)
 
 		snprintf(tmp_key, ICMAP_KEYNAME_MAXLEN, "nodelist.node.%u.nodeid", node_pos);
 		if (icmap_get_uint32(tmp_key, &nodeid) == CS_OK) {
-			create_node(nodeid, 0);
+			pid = create_node(nodeid, 0);
+			if (pid == (pid_t) -1) {
+				fprintf(stderr,
+					"ERR: nodeid %d could not be spawned\n",
+					nodeid);
+				exit(1);
+			}
+			ret++;
 		}
 
 	}
 	icmap_iter_finalize(iter);
+
+	return ret;
 }
 
 static struct vq_node *find_node(int nodeid)
@@ -385,7 +433,20 @@ void cmd_start_new_node(int nodeid, int partition)
 		fprintf(stderr, "ERR: nodeid %d already exists in partition %d\n", nodeid, node->partition->num);
 		return;
 	}
+	qb_loop_poll_del(poll_loop, STDIN_FILENO);
 	create_node(nodeid, partition);
+	if (!nosync) {
+		/* Delay kb input handling by 0.25 second when we've just
+		   added a node; expect that the delay will be cancelled
+		   substantially earlier once it has reported its quorum info
+		   (the delay is in fact a failsafe input enabler here) */
+		qb_loop_timer_add(poll_loop,
+				  QB_LOOP_MED,
+				  250000000,
+				  NULL,
+				  start_kb_input_timeout,
+				  &kb_timer);
+	}
 }
 
 void cmd_stop_all_nodes()
@@ -523,8 +584,10 @@ static void dummy_read_char()
 	parse_input_command((c == EOF) ? NULL : input_buf);
 	input_buf_term = 0;
 
-	printf("vqsim> ");
-	fflush(stdout);
+	if (is_tty) {
+		printf("vqsim> ");
+		fflush(stdout);
+	}
 }
 #endif
 
@@ -541,13 +604,16 @@ static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 
 static void start_kb_input(void)
 {
+	wait_count_to_unblock = 0;
 
 #ifdef HAVE_readline_readline_h
 	/* Readline will deal with completed lines when they arrive */
 	rl_callback_handler_install("vqsim> ", parse_input_command);
 #else
-	printf("vqsim> ");
-	fflush(stdout);
+	if (is_tty) {
+		printf("vqsim> ");
+		fflush(stdout);
+	}
 #endif
 
 	/* Send stdin to readline */
@@ -557,8 +623,14 @@ static void start_kb_input(void)
 			     POLLIN | POLLERR,
 			     NULL,
 			     stdin_read_fn)) {
-		perror("qb_loop_poll_add returned error");
+		perror("qb_loop_poll_add1 returned error");
 	}
+}
+
+static void start_kb_input_timeout(void *data)
+{
+	fprintf(stderr, "Waiting for nodes to report status timed out\n");
+	start_kb_input();
 }
 
 static void usage(char *program)
@@ -569,6 +641,7 @@ static void usage(char *program)
 	printf("\n");
 	printf("    -f     config file. defaults to /etc/corosync/corosync.conf\n");
 	printf("    -o     output file. defaults to stdout\n");
+	printf("    -n     no synchronization (on adding a node)\n");
 	printf("    -h     display this help text\n");
 	printf("\n");
 }
@@ -581,13 +654,16 @@ int main(int argc, char **argv)
 	char *output_file_name = NULL;
 	char envstring[PATH_MAX];
 
-	while ((ch = getopt (argc, argv, "f:o:h")) != EOF) {
+	while ((ch = getopt (argc, argv, "f:o:nh")) != EOF) {
 		switch (ch) {
 		case 'f':
 			config_file_name = optarg;
 			break;
 		case 'o':
 			output_file_name = optarg;
+			break;
+		case 'n':
+			nosync = 1;
 			break;
 		default:
 			usage(argv[0]);
@@ -609,6 +685,9 @@ int main(int argc, char **argv)
 	else {
 		output_file = stdout;
 	}
+#ifndef HAVE_readline_readline_h
+	is_tty = isatty(STDIN_FILENO);
+#endif
 
 	qb_log_filter_ctl(QB_LOG_SYSLOG, QB_LOG_FILTER_ADD,
 			  QB_LOG_FILTER_FUNCTION, "*", LOG_DEBUG);
@@ -629,9 +708,21 @@ int main(int argc, char **argv)
 
 	/* Create a full cluster of nodes from corosync.conf */
 	read_corosync_conf();
-	create_nodes_from_config();
-
-	start_kb_input();
+	if (create_nodes_from_config() && !nosync) {
+		/* Delay kb input handling by 1 second when we've just
+		   added the nodes from corosync.conf; expect that
+		   the delay will be cancelled substantially earlier
+		   once they all have reported their quorum info
+		   (the delay is in fact a failsafe input enabler here) */
+		qb_loop_timer_add(poll_loop,
+				  QB_LOOP_MED,
+				  1000000000,
+				  NULL,
+				  start_kb_input_timeout,
+				  &kb_timer);
+	} else {
+		start_kb_input();
+	}
 
 	qb_loop_run(poll_loop);
 	return 0;

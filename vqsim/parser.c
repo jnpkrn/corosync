@@ -285,7 +285,7 @@ static void run_autofence_cmd(int argc, char **argv)
 	}
 }
 
-void run_qdevice_cmd(int argc, char **argv)
+static void run_qdevice_cmd(int argc, char **argv)
 {
 	int i,j;
 	int partition;
