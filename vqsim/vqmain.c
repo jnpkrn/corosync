@@ -623,13 +623,15 @@ static void start_kb_input(void)
 			     POLLIN | POLLERR,
 			     NULL,
 			     stdin_read_fn)) {
-		perror("qb_loop_poll_add1 returned error");
+		if (errno != EEXIST) {
+			perror("qb_loop_poll_add1 returned error");
+		}
 	}
 }
 
 static void start_kb_input_timeout(void *data)
 {
-	fprintf(stderr, "Waiting for nodes to report status timed out\n");
+//	fprintf(stderr, "Waiting for nodes to report status timed out\n");
 	start_kb_input();
 }
 
@@ -727,4 +729,3 @@ int main(int argc, char **argv)
 	qb_loop_run(poll_loop);
 	return 0;
 }
-
