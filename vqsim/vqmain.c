@@ -1,3 +1,5 @@
+#include <config.h>
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <wait.h>
@@ -6,7 +8,7 @@
 #include <sys/poll.h>
 #include <netinet/in.h>
 #include <sys/queue.h>
-#ifdef HAVE_readline_readline_h
+#ifdef HAVE_READLINE_READLINE_H
 #include <readline/readline.h>
 #else
 #include <unistd.h>  /* isatty */
@@ -61,7 +63,7 @@ static void send_partition_to_nodes(struct vq_partition *partition, int newring)
 static void start_kb_input(void);
 static void start_kb_input_timeout(void *data);
 
-#ifndef HAVE_readline_readline_h
+#ifndef HAVE_READLINE_READLINE_H
 #define INPUT_BUF_SIZE 1024
 static char input_buf[INPUT_BUF_SIZE];
 static size_t input_buf_term = 0;
@@ -558,7 +560,7 @@ void cmd_qdevice_poll(int nodeid, int onoff)
 
 /* ---------------------------------- */
 
-#ifndef HAVE_readline_readline_h
+#ifndef HAVE_READLINE_READLINE_H
 static void dummy_read_char(void);
 
 static void dummy_read_char()
@@ -593,7 +595,7 @@ static void dummy_read_char()
 
 static int stdin_read_fn(int32_t fd, int32_t revents, void *data)
 {
-#ifdef HAVE_readline_readline_h
+#ifdef HAVE_READLINE_READLINE_H
 	/* Send it to readline */
 	rl_callback_read_char();
 #else
@@ -606,7 +608,7 @@ static void start_kb_input(void)
 {
 	wait_count_to_unblock = 0;
 
-#ifdef HAVE_readline_readline_h
+#ifdef HAVE_READLINE_READLINE_H
 	/* Readline will deal with completed lines when they arrive */
 	rl_callback_handler_install("vqsim> ", parse_input_command);
 #else
@@ -687,7 +689,7 @@ int main(int argc, char **argv)
 	else {
 		output_file = stdout;
 	}
-#ifndef HAVE_readline_readline_h
+#ifndef HAVE_READLINE_READLINE_H
 	is_tty = isatty(STDIN_FILENO);
 #endif
 

@@ -1,11 +1,13 @@
 /* Parses the interactive commands */
 
+#include <config.h>
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <netinet/in.h>
-#ifdef HAVE_readline_history_h
+#ifdef HAVE_READLINE_HISTORY_H
 #include <readline/history.h>
 #endif
 
@@ -181,7 +183,7 @@ void parse_input_command(char *rl_cmd)
 		free(cmd);
 	    return;
 	}
-#ifdef HAVE_readline_history_h
+#ifdef HAVE_READLINE_HISTORY_H
 	add_history(rl_cmd);
 #endif
 
